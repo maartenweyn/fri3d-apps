@@ -23,3 +23,37 @@ class _TaskHandler:
 
 
 task_handler = _TaskHandler()
+
+
+class _MainDisplay:
+    """Stand-in for mpos.ui.main_display.
+
+    get_inactive_time() is milliseconds since the last touch or key. The real
+    get_backlight() returns -1 on this firmware, which is why the brightness
+    goes through the I2C expander instead; the stub returns -1 too so nobody is
+    tempted to use it.
+    """
+
+    inactive_ms = 0
+    activity_triggers = 0
+
+    @classmethod
+    def reset(cls):
+        cls.inactive_ms = 0
+        cls.activity_triggers = 0
+
+    @classmethod
+    def get_inactive_time(cls):
+        return cls.inactive_ms
+
+    @classmethod
+    def trigger_activity(cls):
+        cls.activity_triggers += 1
+        cls.inactive_ms = 0
+
+    @classmethod
+    def get_backlight(cls):
+        return -1
+
+
+main_display = _MainDisplay

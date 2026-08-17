@@ -1,23 +1,24 @@
-"""Broker settings for Berichtjes, on the badge itself.
+"""Brokerinstellingen, op de badge zelf.
 
-Its own screen rather than four more rows on the settings screen, for the same
-reason that screen does not scroll: everything has to fit, because a scrollable
-container turns a tap that drifts into a scroll and the button reads as dead.
+Een eigen scherm in plaats van vier extra rijen op het instelscherm, om dezelfde
+reden dat dat scherm niet scrollt: alles moet passen, want een scrollbare
+container maakt van een tik die meebeweegt een scroll en dan leest de knop als
+dood.
 
-With these here, nothing sensitive has to live in a file. A fresh badge can be
-set up entirely on the badge, and dinerbadge_config.py only supplies starting
-values for a badge nobody has configured yet.
+Hiermee hoeft er niets gevoeligs in een bestand te staan. Een verse badge kan
+volledig op de badge ingesteld worden, en `badge_config.py` levert alleen
+startwaarden voor een badge die nog nooit ingesteld is.
 
-The password is never shown. Editing it starts from an empty field and an empty
-result keeps what is stored, so a child reading over a shoulder learns nothing
-and the value cannot be lost by accident.
+Het wachtwoord wordt nooit getoond. Bewerken begint met een leeg veld en een
+leeg resultaat houdt wat er staat, zodat een kind dat meekijkt niets leert en de
+waarde niet per ongeluk verdwijnt.
 """
 
 import lvgl as lv
 
 from mpos import Activity, Intent, InputActivity
 
-import dinerbadge_service as service
+import badge_service as service
 
 try:
     from mpos import SharedPreferences
@@ -31,7 +32,7 @@ COL_WARN = 0xCC5555
 ROW_HEIGHT = 38
 
 
-class DinerBadgeConnection(Activity):
+class BadgeConnection(Activity):
 
     def __init__(self):
         super().__init__()
@@ -43,7 +44,7 @@ class DinerBadgeConnection(Activity):
         self._frame_cb = None
         self._shown_status = None
 
-    # --- lifecycle ---------------------------------------------------------
+    # --- levenscyclus ------------------------------------------------------
 
     def onCreate(self):
         self.host = service.MQTT_BROKER or ""
@@ -61,8 +62,8 @@ class DinerBadgeConnection(Activity):
         title.set_text("Verbinding")
         title.set_style_text_color(lv.color_hex(COL_DIM), 0)
 
-        # What the service is actually doing, which is the thing you want to
-        # see while typing an address in.
+        # Wat de service werkelijk doet, en dat is wat je wil zien terwijl je
+        # een adres intypt.
         self.status = lv.label(screen)
         self._paint_status()
 
@@ -76,9 +77,8 @@ class DinerBadgeConnection(Activity):
 
     def onResume(self, screen):
         super().onResume(screen)
-        # A status painted once is a status that lies within seconds. Someone
-        # standing here has just changed an address and is waiting to see
-        # whether it took.
+        # Een status die één keer getekend wordt liegt binnen enkele seconden.
+        # Wie hier staat heeft net een adres gewijzigd en wacht af of het pakt.
         self._paint_status()
         if self._frame_cb is None:
             self._frame_cb = self._on_frame
@@ -102,7 +102,7 @@ class DinerBadgeConnection(Activity):
     def _on_frame(self, a, b):
         self._paint_status()
 
-    # --- rendering ---------------------------------------------------------
+    # --- tekenen -----------------------------------------------------------
 
     def status_text(self):
         if service.connected:
@@ -125,7 +125,7 @@ class DinerBadgeConnection(Activity):
         label, text = self.labels[key]
         label.set_text("%s: %s" % (text[0], text[1]()))
 
-    # --- fields ------------------------------------------------------------
+    # --- velden ------------------------------------------------------------
 
     def _field(self, parent, key, name, value):
         btn = lv.button(parent)
@@ -160,7 +160,7 @@ class DinerBadgeConnection(Activity):
             setting["placeholder"] = "leeg laten om te bewaren"
             setting["note"] = "Wordt niet weergegeven. Leeg laten houdt het " \
                               "huidige wachtwoord."
-            value = ""            # never show the stored one back
+            value = ""            # toon de bewaarde nooit terug
         intent = Intent(activity_class=InputActivity)
         intent.putExtra("setting", setting)
         intent.putExtra("value", value)
@@ -179,13 +179,13 @@ class DinerBadgeConnection(Activity):
             if port:
                 self.port = port
         elif key == "user":
-            self.user = typed          # empty means anonymous, which is valid
+            self.user = typed          # leeg betekent anoniem, en dat mag
         else:
-            if typed:                  # empty keeps the stored password
+            if typed:                  # leeg houdt het bewaarde wachtwoord
                 self.password = typed
         self._refresh(key)
 
-    # --- plumbing ----------------------------------------------------------
+    # --- loodgieterswerk ---------------------------------------------------
 
     def _no_scroll(self, obj):
         try:
@@ -222,7 +222,7 @@ class DinerBadgeConnection(Activity):
             editor.put_string("mqtt_pass", self.password)
             editor.commit()
         except Exception as e:
-            print("dinerbadge connection: could not save:", e)
-        # Applying drops the connection and reconnects, which is the only way to
-        # find out whether what you typed works.
+            print("badge verbinding: kon niet bewaren:", e)
+        # Toepassen laat de verbinding vallen en verbindt opnieuw, en dat is de
+        # enige manier om te zien of wat je typte werkt.
         service.load_prefs()

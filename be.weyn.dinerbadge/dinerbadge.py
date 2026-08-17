@@ -2,7 +2,10 @@
 
 The work happens in dinerbadge_service; this activity only renders the
 service's state and sends the acknowledgement. It owns no MQTT connection of
-its own, so closing the app does not stop messages from arriving.
+its own, so closing the app does not stop messages from arriving. The connection
+itself lives one app further along, in be.weyn.badge, which is why this screen
+can tell "no broker" apart from "no Badge app at all": those need different
+things done about them.
 """
 
 import lvgl as lv
@@ -211,6 +214,10 @@ class DinerBadge(Activity):
     # --- rendering ---------------------------------------------------------
 
     def _refresh(self):
+        # The name and the link are borrowed from the Badge app, and that app's
+        # service may start after this one. Ask again every frame rather than
+        # trusting what was true at onCreate.
+        service.sync_bridge()
         # Includes whether an acknowledgement is still waiting for a link, so
         # "Bevestigd, niet verzonden" turns into "Bevestigd" by itself once it
         # goes out, without the child having to touch anything.
@@ -251,15 +258,27 @@ class DinerBadge(Activity):
             self._set_enabled(False)
 
     def _paint_link(self):
+        # Op de verbinding alleen cachen was fout: er zijn twee manieren om niet
+        # verbonden te zijn, en de overgang van de ene naar de andere verandert
+        # `online` niet. Dan bleef er "geen verbinding" staan terwijl de Badge-app
+        # intussen helemaal weg was, en dat stuurt iemand een uur zijn wifi
+        # nakijken. Cache op wat er te zien is, niet op een deel ervan.
         online = bool(service.connected)
-        if online == self._shown_connected:
+        toestand = (online, service.bridge_missing_reason())
+        if toestand == self._shown_connected:
             return
-        self._shown_connected = online
+        self._shown_connected = toestand
         if online:
             self.link.set_text("verbonden")
             self.link.set_style_text_color(lv.color_hex(COL_DIM), 0)
         else:
-            self.link.set_text("geen verbinding")
+            # "geen Badge-app" and "geen verbinding" call for different repairs:
+            # one is an app that is not installed or not started, the other is a
+            # broker that is not answering. Saying only the second would send
+            # someone to check their WiFi for an hour.
+            self.link.set_text("geen Badge-app"
+                               if service.bridge_missing_reason()
+                               else "geen verbinding")
             self.link.set_style_text_color(lv.color_hex(COL_WARN), 0)
 
     def _status(self, text, color):

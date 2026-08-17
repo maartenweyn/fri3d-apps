@@ -243,5 +243,23 @@ class AudioManager:
         return _Player(rtttl)
 
 
+class _IOExpander:
+    """The CH32X035 behind the screen brightness.
+
+    lcd_brightness is 0..100 and writable; 0 is off. This is the only way that
+    works on this firmware: the LVGL route through main_display.get_backlight()
+    returns -1.
+    """
+
+    lcd_brightness = 100
+
+    @classmethod
+    def reset(cls):
+        cls.lcd_brightness = 100
+
+
+io_expander = _IOExpander
+
+
 # The Fri3d 2026 firmware exports SharedPreferences from mpos itself.
 from mpos.config import SharedPreferences  # noqa: E402

@@ -1,0 +1,34 @@
+{
+  "name": "Badge",
+  "publisher": "Maarten Weyn",
+  "short_description": "This badge on Home Assistant: one MQTT link, its own health, and the screen",
+  "long_description": "The background app that connects this badge to Home Assistant. It owns the single MQTT connection other apps borrow, reports battery, voltage and WiFi signal as sensors that appear in Home Assistant by themselves, and turns the screen off after a while of nobody touching it. Which badge this is, and which broker it talks to, are typed here on the badge itself.",
+  "fullname": "be.weyn.badge",
+  "version": "0.1.0",
+  "categories": [
+    "System"
+  ],
+  "activities": [
+    {
+      "entrypoint": "badge.py",
+      "classname": "Badge",
+      "intent_filters": [
+        {
+          "action": "main",
+          "category": "launcher"
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "entrypoint": "badge_service.py",
+      "classname": "BadgeService",
+      "intent_filters": [
+        {
+          "action": "boot_completed"
+        }
+      ]
+    }
+  ]
+}
