@@ -58,6 +58,31 @@ def _find_lights():
 LightsManager = _find_lights()
 
 
+def _find_start_button():
+    """The badge's S button, exposed by the active board module as btn_start.
+
+    On the Fri3d 2026 it is GPIO0 and reads 0 while held, 1 at rest. Going
+    through mpos.board rather than machine.Pin keeps the pin shared with the
+    firmware instead of reconfiguring it underneath.
+    """
+    try:
+        import mpos.board as board
+    except Exception:
+        board = None
+    if board is not None:
+        for name in dir(board):
+            if name.startswith("_"):
+                continue
+            pin = getattr(getattr(board, name, None), "btn_start", None)
+            if pin is not None and hasattr(pin, "value"):
+                return pin
+    try:
+        import machine
+        return machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
+    except Exception:
+        return None
+
+
 def _lv_const(group, name, fallback):
     """Resolve an LVGL constant across binding styles.
 
@@ -109,6 +134,7 @@ FLASH_MS = 2000
 FLASH_PERIOD_MS = 200
 LED_INTERVAL_MS = 50
 PULSE_PERIOD_MS = 1400
+START_DEBOUNCE_MS = 300
 
 
 class _Digit:
@@ -232,6 +258,12 @@ class Pomodoro(Activity):
         # yields a new object each time it is read, and removing a different
         # object than the one registered leaves the callback running.
         self._frame_cb = self.update_frame
+        # The badge's S button, polled in the frame callback. It is the one
+        # control you can hit without looking at the screen, so it gets the
+        # action you reach for most: start and pause.
+        self._start_pin = _find_start_button()
+        self._start_was_down = False
+        self._start_last = 0
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -498,8 +530,27 @@ class Pomodoro(Activity):
             pass
         self._ticking = False
 
+    def _poll_start_button(self, now):
+        if self._start_pin is None:
+            return
+        try:
+            down = self._start_pin.value() == 0
+        except Exception as exc:
+            print("pomodoro: start button unreadable, ignoring it:", exc)
+            self._start_pin = None
+            return
+        if down and not self._start_was_down:
+            if time.ticks_diff(now, self._start_last) > START_DEBOUNCE_MS:
+                self._start_last = now
+                self._start_was_down = True
+                self._toggle()
+                return
+        if not down:
+            self._start_was_down = False
+
     def update_frame(self, a, b):
         now = time.ticks_ms()
+        self._poll_start_button(now)
         if self.running:
             left = time.ticks_diff(self.deadline, now)
             if left <= 0:

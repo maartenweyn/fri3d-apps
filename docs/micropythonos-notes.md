@@ -117,3 +117,19 @@ Two things the general docs get wrong for this build:
                      if getattr(o, "kind", None) == "buzzer")
        AudioManager.rtttl_player(tune, stream_type=AudioManager.STREAM_ALARM,
                                  output=buzzer).start()
+
+## Badge inputs, measured
+
+`mpos.board` exposes exactly one submodule, named after the hardware id, with
+the board wiring. On the Fri3d 2026:
+
+- `btn_start` is `Pin(0)`, the button silkscreened S. It reads 1 at rest and 0
+  while held, so poll for a falling edge and debounce.
+- `expander` is the CH32X035 over I2C at address 80. `expander.digital` is a
+  12-tuple of booleans and `expander.analog` a 5-tuple; the S button is not
+  among them, it is a direct GPIO.
+- `keypad_read_cb` feeds an LVGL keypad indev, alongside the CST816S touch
+  indev. `lv.KEY` on this build offers UP 17, DOWN 18, RIGHT 19, LEFT 20,
+  ENTER 10, ESC 27, HOME 2, END 3, NEXT 9, PREV 11, BACKSPACE 8, DEL 127.
+- The board module is frozen into the firmware, so there is no source file on
+  flash to read. Inspect it with `dir()` over the REPL instead.

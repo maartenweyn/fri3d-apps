@@ -34,12 +34,15 @@ Built for a badge sitting on a desk, which shapes most of the design.
   device at arm's length needs different levels than one on a lanyard. Settings
   survive a reboot.
 - **A daily counter.** How many pomodoros you finished today, reset at midnight.
+- **The S button starts and pauses**, regardless of where the focus is, so you
+  can reach over and hit it without looking away from your work.
 - **Touch and keys.** On-screen buttons, and the same buttons reachable with the
   badge's d-pad because they sit in the default LVGL focus group.
 - **Auto-start**, off by default, to chain phases without touching the badge.
 
 | Control | What it does |
 | --- | --- |
+| **S button** | Start or pause, wherever the focus is |
 | Start / Pause | Run or hold the current phase |
 | Reset | Back to the full length of the current phase |
 | Skip | Jump to the next phase without an alert |
@@ -100,7 +103,7 @@ The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
 
     python3 tests/test_pomodoro.py
 
-44 checks covering the phase cycle, pause and resume timing, the day rollover,
+67 checks covering the phase cycle, pause and resume timing, the day rollover,
 clamping in the settings screen, LED cleanup on exit, that the LED hourglass
 only ever empties, that a paused timer shows amber, and that chimes are routed
 to the buzzer rather than the headset. The stubs deliberately mirror the quirks

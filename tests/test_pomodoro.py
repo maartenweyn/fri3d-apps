@@ -251,6 +251,74 @@ app.onResume(app._view)
 check(abs(app.remaining_ms - left) < 2000,
       "a longer phase leaves the running countdown alone: %d vs %d" % (app.remaining_ms, left))
 
+print("=== the S button starts and pauses ===")
+from mpos.board import fri3d_2026 as board
+pomodoro.mpos.ui.task_handler.cbs.clear()
+cfg._STORE.clear()
+LightsManager.reset()
+board.btn_start.release()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 25)\
+    .put_int("leds", 0).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+check(app._start_pin is board.btn_start, "the app found the badge's S button")
+check(not app.running, "starts paused")
+
+def tap(hold_frames=3, gap_frames=10):
+    board.btn_start.press()
+    for _ in range(hold_frames):
+        CLOCK["ms"] += 30
+        app.update_frame(None, None)
+    board.btn_start.release()
+    for _ in range(gap_frames):
+        CLOCK["ms"] += 30
+        app.update_frame(None, None)
+
+tap()
+check(app.running, "one press starts it")
+tap()
+check(not app.running, "the next press pauses it")
+tap()
+check(app.running, "and the one after that resumes")
+
+print("=== holding it does not stutter ===")
+board.btn_start.press()
+states = []
+for _ in range(60):
+    CLOCK["ms"] += 30
+    app.update_frame(None, None)
+    states.append(app.running)
+board.btn_start.release()
+check(len(set(states)) == 1, "holding the button toggles once, not repeatedly: %d changes"
+      % (len(set(states)) - 1))
+
+print("=== a bouncing contact is not two presses ===")
+CLOCK["ms"] += 5000
+app.update_frame(None, None)
+before = app.running
+board.btn_start.press();  CLOCK["ms"] += 10; app.update_frame(None, None)
+board.btn_start.release(); CLOCK["ms"] += 10; app.update_frame(None, None)
+board.btn_start.press();  CLOCK["ms"] += 10; app.update_frame(None, None)
+board.btn_start.release(); CLOCK["ms"] += 10; app.update_frame(None, None)
+check(app.running != before and app.running == (not before),
+      "a bounce within the debounce window counts once")
+
+print("=== a missing button never breaks the app ===")
+app._start_pin = None
+CLOCK["ms"] += 1000
+app.update_frame(None, None)
+check(True, "polling a board without the button is harmless")
+
+
+class _AngryPin:
+    def value(self):
+        raise OSError("i2c gone")
+
+
+app._start_pin = _AngryPin()
+app.update_frame(None, None)
+check(app._start_pin is None, "a pin that starts failing is dropped, not retried forever")
+app.onPause(app._view)
+
 print()
 print("%d check(s) failed" % len(fails))
 for f in fails:

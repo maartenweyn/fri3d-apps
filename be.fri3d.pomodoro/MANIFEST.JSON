@@ -4,7 +4,7 @@
   "short_description": "Focus timer with LED and sound alerts",
   "long_description": "A Pomodoro timer for the Fri3d badge, built for a desk. The countdown fills the screen as seven-segment digits, and the five onboard LEDs run out like sand: red while you focus, green on a break, so anyone walking up can see whether they are interrupting.",
   "fullname": "be.fri3d.pomodoro",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "categories": [
     "Productivity"
   ],

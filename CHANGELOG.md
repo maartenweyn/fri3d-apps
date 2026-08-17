@@ -2,6 +2,18 @@
 
 ## Pomodoro
 
+### 0.3.0
+
+The badge's S button starts and pauses the timer. It works wherever the focus
+happens to be, which is the point: it is the one control you can hit without
+looking at the screen.
+
+On the Fri3d 2026 the button is GPIO0, exposed by the board module as
+`btn_start` and reading 0 while held. The app polls it in the frame callback
+with a 300 ms debounce, goes through `mpos.board` rather than claiming
+`machine.Pin(0)` so the pin stays shared with the firmware, and quietly stops
+polling if reading it ever fails.
+
 ### 0.2.1
 
 - The LEDs go dark while the settings are open, instead of animating through
