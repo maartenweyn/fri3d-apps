@@ -22,7 +22,23 @@ except ImportError:  # SDK 1.x
 
 REPO = Path(os.environ.get("FRI3D_REPO", Path(__file__).resolve().parents[2]))
 MPREMOTE = os.environ.get("MPREMOTE") or shutil.which("mpremote") or "mpremote"
-DEFAULT_APP = os.environ.get("FRI3D_APP", "be.fri3d.pomodoro")
+# No app is more default than another: a bare install used to mean one
+# particular app, which quietly did nothing for whatever you were working on.
+# Set FRI3D_APP if you want one, otherwise an omitted app means all of them.
+DEFAULT_APP = os.environ.get("FRI3D_APP", "")
+
+
+def _apps(app=""):
+    """The apps named, or every app in the repository.
+
+    An app is a folder with a MANIFEST.JSON in it.
+    """
+    if app:
+        return [app]
+    if DEFAULT_APP:
+        return [DEFAULT_APP]
+    return sorted(p.name for p in REPO.iterdir()
+                  if p.is_dir() and (p / "MANIFEST.JSON").is_file())
 DEFAULT_TIMEOUT = 60
 
 mcp = _McpServer("fri3d-badge")
@@ -140,12 +156,22 @@ def badge_read(path: str, max_bytes: int = 20000) -> str:
 
 
 @mcp.tool()
-def badge_install(app: str = DEFAULT_APP, clean: bool = True) -> str:
+def badge_install(app: str = "", clean: bool = True) -> str:
     """Copy an app folder from the repository into /apps and refresh the launcher.
+
+    Omit app to install every app in the repository, which is what you usually
+    want after a change to shared code.
 
     With clean=True the app is removed from the badge first, which also clears
     out any stale files a previous install left behind.
     """
+    apps = _apps(app)
+    if not apps:
+        return "no apps in the repository"
+    if len(apps) > 1:
+        return "\n\n".join("=== %s ===\n%s" % (one, badge_install(one, clean))
+                            for one in apps)
+    app = apps[0]
     source = _repo_path(app)
     if not source.is_dir():
         raise BadgeError("%s is not a folder" % source)
@@ -190,7 +216,7 @@ def badge_refresh() -> str:
 
 
 @mcp.tool()
-def badge_start_app(app: str = DEFAULT_APP) -> str:
+def badge_start_app(app: str) -> str:
     """Launch an app on the badge, as the launcher would."""
     code = ("from mpos import AppManager\n"
             "AppManager.start_app(%r)\n"
@@ -205,10 +231,17 @@ def badge_reset() -> str:
 
 
 @mcp.tool()
-def badge_diag(app: str = DEFAULT_APP) -> str:
+def badge_diag(app: str = "") -> str:
     """Full diagnosis of why an app will not load: files, manifest, frameworks,
-    lvgl symbols, then import and construct each activity with a real traceback."""
-    return _run(["exec", "APP_ID=%r" % app, "run", str(_repo_path("tools/diag.py"))],
+    lvgl symbols, then import and construct each activity with a real traceback.
+
+    Omit app to diagnose every app in the repository."""
+    apps = _apps(app)
+    if len(apps) != 1:
+        return "\n\n".join("=== %s ===\n%s" % (one, badge_diag(one))
+                            for one in apps)
+    return _run(["exec", "APP_ID=%r" % apps[0],
+                 "run", str(_repo_path("tools/diag.py"))],
                 timeout=120)
 
 

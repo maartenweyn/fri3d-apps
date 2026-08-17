@@ -4,11 +4,12 @@
 #   ./badge.sh probe            report hardware, screen size, LEDs, audio
 #   ./badge.sh list             list installed apps
 #   ./badge.sh wipe             remove ALL user-installed apps from /apps
-#   ./badge.sh install [app]    copy an app folder to /apps (default: be.fri3d.pomodoro)
-#   ./badge.sh reinstall [app]  remove that app from /apps, then install it
+#   ./badge.sh apps             list the app folders in this repo
+#   ./badge.sh install [app..]  copy app folders to /apps (default: all of them)
+#   ./badge.sh reinstall [app..] remove those apps, then install them again
 #   ./badge.sh uninstall <app>  remove one app from /apps
-#   ./badge.sh diag [app]       why will it not load: files, manifest, imports, traceback
-#   ./badge.sh mpk [app]        build a distributable .mpk into dist/
+#   ./badge.sh diag [app..]     why will it not load: files, manifest, imports, traceback
+#   ./badge.sh mpk [app..]      build distributable .mpk files into dist/
 #   ./badge.sh refresh          rescan /apps so new apps show in the launcher
 #   ./badge.sh reset            reboot the badge
 #   ./badge.sh run <file.py>    run a local python file on the badge, print output
@@ -21,7 +22,46 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 MPR="${MPREMOTE:-mpremote}"
-DEFAULT_APP="be.fri3d.pomodoro"
+
+# An app is a folder with a MANIFEST.JSON in it. Deliberately no default app:
+# a bare `install` used to mean one particular app, which quietly did nothing
+# for whatever you were actually working on.
+app_dirs() {
+  local manifest
+  for manifest in */MANIFEST.JSON; do
+    [ -f "$manifest" ] || continue
+    dirname "$manifest"
+  done
+}
+
+# App ids never contain spaces, so word splitting is safe here.
+default_to_all_apps() {
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$@"
+  else
+    app_dirs
+  fi
+}
+
+check_app() {
+  local app="$1"
+  [ -d "$app" ] || { echo "no such app folder: $app" >&2; return 1; }
+  [ -f "$app/MANIFEST.JSON" ] && return 0
+  echo "$app has no MANIFEST.JSON, so it is not an app" >&2
+  return 1
+}
+
+# __pycache__ is how a desktop test run leaks bytecode into an app folder, and
+# a stale .pyc on the badge shadows the .py next to it. Refuse rather than ship
+# it.
+check_clean() {
+  local app="$1" junk
+  junk="$(find "$app" -name '__pycache__' -o -name '*.pyc' 2>/dev/null | head -3)"
+  [ -z "$junk" ] && return 0
+  echo "$app contains build leftovers, remove them first:" >&2
+  echo "$junk" >&2
+  return 1
+}
 
 if ! command -v "$MPR" >/dev/null 2>&1; then
   cat >&2 <<'MSG'
@@ -86,21 +126,30 @@ for d in ('/apps', '/builtin/apps'):
         print(d + ': <missing>')
 "
     ;;
+  apps)
+    app_dirs
+    ;;
   install)
-    app="${1:-$DEFAULT_APP}"
-    [ -d "$app" ] || { echo "no such app folder: $app" >&2; exit 1; }
+    apps="$(default_to_all_apps "$@")"
+    [ -n "$apps" ] || { echo "no apps in this repo" >&2; exit 1; }
+    for app in $apps; do check_app "$app" && check_clean "$app" || exit 1; done
     "$MPR" mkdir :/apps 2>/dev/null || true
-    "$MPR" fs cp -r "$app" :/apps/
-    echo "installed $app"
+    for app in $apps; do
+      "$MPR" fs cp -r "$app" :/apps/
+      echo "installed $app"
+    done
     refresh_launcher
     ;;
   reinstall)
-    app="${1:-$DEFAULT_APP}"
-    [ -d "$app" ] || { echo "no such app folder: $app" >&2; exit 1; }
-    remote_rm_app "$app"
+    apps="$(default_to_all_apps "$@")"
+    [ -n "$apps" ] || { echo "no apps in this repo" >&2; exit 1; }
+    for app in $apps; do check_app "$app" && check_clean "$app" || exit 1; done
     "$MPR" mkdir :/apps 2>/dev/null || true
-    "$MPR" fs cp -r "$app" :/apps/
-    echo "reinstalled $app"
+    for app in $apps; do
+      remote_rm_app "$app"
+      "$MPR" fs cp -r "$app" :/apps/
+      echo "reinstalled $app"
+    done
     refresh_launcher
     ;;
   uninstall)
@@ -108,11 +157,15 @@ for d in ('/apps', '/builtin/apps'):
     remote_rm_app "$app"
     ;;
   diag)
-    app="${1:-$DEFAULT_APP}"
-    "$MPR" exec "APP_ID='$app'" run tools/diag.py
+    apps="$(default_to_all_apps "$@")"
+    for app in $apps; do
+      echo "=== $app ==="
+      "$MPR" exec "APP_ID='$app'" run tools/diag.py
+    done
     ;;
   mpk)
-    ./tools/pack_mpk.sh "${1:-$DEFAULT_APP}"
+    apps="$(default_to_all_apps "$@")"
+    for app in $apps; do ./tools/pack_mpk.sh "$app"; done
     ;;
   refresh)
     refresh_launcher
@@ -129,6 +182,6 @@ for d in ('/apps', '/builtin/apps'):
     "$MPR" repl
     ;;
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 esac

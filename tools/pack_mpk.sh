@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
-APP="${1:-be.fri3d.pomodoro}"
+APP="${1:?usage: ./tools/pack_mpk.sh <app-id>}"
 OUT_DIR="$REPO/dist"
 
 [ -d "$APP" ] || { echo "no such app folder: $APP" >&2; exit 1; }
@@ -35,6 +35,31 @@ if find "$APP" -name '__pycache__' -o -name '.DS_Store' | grep -q .; then
   exit 1
 fi
 
+# A file that is too sensitive for the repository is too sensitive for a package
+# you hand to someone or publish on BadgeHub. Berichtjes' dinerbadge_config.py
+# holds the MQTT password, and it went straight into the .mpk until this check
+# existed. git decides: whatever it ignores stays out.
+EXCLUDED=""
+while IFS= read -r candidate; do
+  if git -C "$REPO" check-ignore -q "$candidate" 2>/dev/null; then
+    EXCLUDED="$EXCLUDED $candidate"
+  fi
+done <<EOF
+$(find "$APP" -type f)
+EOF
+if [ -n "$EXCLUDED" ]; then
+  echo "leaving out, because git ignores it:" >&2
+  for f in $EXCLUDED; do echo "  $f" >&2; done
+fi
+
+keep() {
+  local path="$1" skip
+  for skip in $EXCLUDED; do
+    [ "$path" = "$skip" ] && return 1
+  done
+  return 0
+}
+
 mkdir -p "$OUT_DIR"
 TARGET="$OUT_DIR/${APP}_${VERSION}.mpk"
 
@@ -45,8 +70,11 @@ trap 'rm -rf "$STAGE"' EXIT
 BUILT="$STAGE/${APP}_${VERSION}.mpk"
 
 find "$APP" -exec touch -t 202601010000.00 {} \;
-{ find "$APP" -type d; find "$APP" -type f; } | sort \
-  | TZ=UTC zip -q -X -r -0 "$BUILT" -@
+{ find "$APP" -type d; find "$APP" -type f; } | sort | while IFS= read -r entry; do
+  keep "$entry" && printf '%s\n' "$entry"
+done | TZ=UTC zip -q -X -0 "$BUILT" -@
+# No -r: the list already names every directory and every file, and -r would
+# recurse back into the directory entry and re-add the files just excluded.
 
 cp "$BUILT" "$TARGET"
 echo "built $TARGET"
