@@ -228,6 +228,10 @@ class Pomodoro(Activity):
         self._ticking = False
         self._durations = None
         self._buzzer_out = False   # False = not looked up yet
+        # Keep exactly one bound method: in MicroPython `self.update_frame`
+        # yields a new object each time it is read, and removing a different
+        # object than the one registered leaves the callback running.
+        self._frame_cb = self.update_frame
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -239,10 +243,20 @@ class Pomodoro(Activity):
 
     def onResume(self, screen):
         super().onResume(screen)
+        if self.running:
+            # Nothing ticked while we were away, so catch the clock up first.
+            self.remaining_ms = max(0, time.ticks_diff(self.deadline, time.ticks_ms()))
         changed = self._load()
         if changed and not self.running:
             self._set_phase(self.phase)
         else:
+            if changed and self.running:
+                # A shortened phase must not leave more time on the clock than
+                # the phase now lasts, or the LEDs would overflow the strip.
+                cap = self._phase_ms()
+                if self.remaining_ms > cap:
+                    self.remaining_ms = cap
+                    self.deadline = time.ticks_add(time.ticks_ms(), cap)
             self._draw()
         self._tick_on()
 
@@ -470,7 +484,7 @@ class Pomodoro(Activity):
         if self._ticking:
             return
         try:
-            mpos.ui.task_handler.add_event_cb(self.update_frame, 1)
+            mpos.ui.task_handler.add_event_cb(self._frame_cb, 1)
             self._ticking = True
         except Exception as exc:
             print("pomodoro: no frame callback available:", exc)
@@ -479,7 +493,7 @@ class Pomodoro(Activity):
         if not self._ticking:
             return
         try:
-            mpos.ui.task_handler.remove_event_cb(self.update_frame)
+            mpos.ui.task_handler.remove_event_cb(self._frame_cb)
         except Exception:
             pass
         self._ticking = False
@@ -574,11 +588,17 @@ class Pomodoro(Activity):
 
         if self.running:
             total = self._phase_ms()
-            fraction = 1.0 if total <= 0 else max(0.0, self.remaining_ms / total)
-            # LEDs run out like sand: all lit at the start, one left at the end.
-            remaining = int(fraction * count)
-            if fraction > 0 and remaining < 1:
-                remaining = 1
+            # One LED per 1/count of the configured phase, so a five minute
+            # focus and a fifty minute one both start with the strip full.
+            fraction = 1.0 if total <= 0 else self.remaining_ms / total
+            fraction = max(0.0, min(1.0, fraction))
+            # Round up, so the strip is full until the first fifth has actually
+            # gone by, and the last LED stays lit through the final fifth.
+            exact = fraction * count
+            remaining = int(exact)
+            if remaining < exact:
+                remaining += 1
+            remaining = max(0, min(count, remaining))
             steady = self._dim(LED_RGB[self.phase])
             colors = [steady] * remaining + [off] * (count - remaining)
             if remaining:
@@ -637,4 +657,8 @@ class Pomodoro(Activity):
     # ------------------------------------------------------------------ settings
 
     def _open_settings(self):
+        # Nothing meaningful to show while the durations are being edited, and
+        # animating through the change looks like a fault.
+        self._tick_off()
+        self._leds_clear()
         self.startActivity(Intent(activity_class=PomodoroSettings))

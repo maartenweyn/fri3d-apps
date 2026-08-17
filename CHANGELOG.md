@@ -2,6 +2,22 @@
 
 ## Pomodoro
 
+### 0.2.1
+
+- The LEDs go dark while the settings are open, instead of animating through
+  the change, which looked like a fault.
+- Fixed the frame callback outliving the activity. In MicroPython, reading
+  `self.update_frame` produces a new bound method every time, so unregistering
+  it removed nothing and the LEDs kept animating behind the settings screen.
+  The activity now holds one callback object for its lifetime.
+- Each LED covers one fifth of the configured phase, rounded up, so a five
+  minute focus and a ninety minute one both start with the full strip. Before,
+  the lit count was rounded down, which dropped an LED as soon as the phase
+  started.
+- Shortening a phase while it runs caps the countdown to the new length.
+  Previously the remaining time could exceed the phase, which asked for more
+  LEDs than the badge has.
+
 ### 0.2.0
 
 Reworked for a badge that sits on a desk rather than hanging on a lanyard.

@@ -140,7 +140,8 @@ app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 check(app.time_text == "01:00", "timer picks up the new 1 minute, got %r" % app.time_text)
 app.onPause(app._view)
 check(LightsManager.leds == [(0, 0, 0)] * 5, "LEDs cleared on leaving the app")
-check(app.update_frame not in pomodoro.mpos.ui.task_handler.cbs, "frame callback unregistered on pause")
+check(all(cb is not app._frame_cb for cb in pomodoro.mpos.ui.task_handler.cbs),
+      "frame callback really unregistered on pause, by identity")
 
 print("=== LEDs behave like an hourglass ===")
 cfg._STORE.clear()
@@ -194,6 +195,61 @@ check(len(segs) == 7, "each digit has seven segments, got %d" % len(segs))
 app.clock.set_time("08:15", 0xFFFFFF, True)
 check(app.clock.digits[0].value == "0" and app.clock.digits[3].value == "5",
       "digits map to the right characters")
+
+print("=== one LED per fifth of the configured phase, not per five minutes ===")
+def lit_after(minutes_total, minutes_elapsed):
+    cfg._STORE.clear()
+    LightsManager.reset()
+    mpos.config.SharedPreferences("be.fri3d.pomodoro").edit()\
+        .put_int("work_min", minutes_total).put_int("leds", 1)\
+        .put_int("brightness", 40).put_int("autostart", 0).commit()
+    a = pomodoro.Pomodoro(); a.onCreate(); a.onResume(a._view)
+    a._toggle()
+    advance(a, minutes_elapsed * 60_000)
+    return LightsManager.lit()
+
+check(lit_after(5, 1) == 4, "5 min phase, 1 min gone -> 4 lit, got %d" % lit_after(5, 1))
+check(lit_after(50, 10) == 4, "50 min phase, 10 min gone -> 4 lit, got %d" % lit_after(50, 10))
+check(lit_after(50, 5) == 5, "50 min phase, 5 min gone -> still 5 lit, got %d" % lit_after(50, 5))
+check(lit_after(90, 18) == 4, "90 min phase, 18 min gone -> 4 lit, got %d" % lit_after(90, 18))
+
+print("=== editing the settings does not animate the LEDs ===")
+pomodoro.mpos.ui.task_handler.cbs.clear()   # earlier sections left theirs behind
+cfg._STORE.clear()
+LightsManager.reset()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 25)\
+    .put_int("leds", 1).put_int("brightness", 40).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+app._toggle(); advance(app, 60_000)
+check(LightsManager.lit() > 0, "LEDs are on while running")
+app._open_settings()
+check(LightsManager.leds == [(0, 0, 0)] * 5, "LEDs go dark on entering the settings")
+check(pomodoro.mpos.ui.task_handler.cbs == [], "and nothing keeps ticking behind the settings screen")
+before = list(LightsManager.leds)
+for _ in range(50):
+    CLOCK["ms"] += 100
+check(LightsManager.leds == before, "and they stay dark while time passes")
+
+print("=== shortening a running phase does not overflow the strip ===")
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5).commit()
+app.onResume(app._view)
+advance(app, 1_000)
+check(len(LightsManager.leds) == 5, "still five LEDs")
+check(LightsManager.lit() <= 5, "never more lit than exist, got %d" % LightsManager.lit())
+check(app.remaining_ms <= 5 * 60_000,
+      "the clock is capped to the new phase length: %d ms" % app.remaining_ms)
+check(app.running, "and the timer is still running")
+
+print("=== lengthening a running phase keeps the clock ===")
+cfg._STORE.clear()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 10).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+app._toggle(); advance(app, 120_000)
+left = app.remaining_ms
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 40).commit()
+app.onResume(app._view)
+check(abs(app.remaining_ms - left) < 2000,
+      "a longer phase leaves the running countdown alone: %d vs %d" % (app.remaining_ms, left))
 
 print()
 print("%d check(s) failed" % len(fails))
