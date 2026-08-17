@@ -22,6 +22,7 @@ Then use the helper script:
     ./badge.sh install          # copy be.fri3d.pomodoro to the badge
     ./badge.sh reinstall        # remove it from the badge first, then copy
     ./badge.sh uninstall <id>   # remove one app
+    ./badge.sh diag             # why an app will not load, with the traceback
     ./badge.sh refresh          # rescan /apps so the launcher sees new apps
     ./badge.sh reset            # reboot the badge
     ./badge.sh run <file.py>    # run a local script on the badge

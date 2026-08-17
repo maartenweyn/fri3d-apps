@@ -8,7 +8,11 @@ onResume().
 import lvgl as lv
 
 from mpos import Activity
-import mpos.config
+
+try:
+    from mpos import SharedPreferences
+except Exception:
+    from mpos.config import SharedPreferences
 
 APP_ID = "be.fri3d.pomodoro"
 
@@ -46,7 +50,7 @@ class PomodoroSettings(Activity):
         self.switches = {}
 
     def onCreate(self):
-        prefs = mpos.config.SharedPreferences(APP_ID)
+        prefs = SharedPreferences(APP_ID)
         for key, default in DEFAULTS.items():
             try:
                 self.values[key] = prefs.get_int(key, default)
@@ -164,7 +168,7 @@ class PomodoroSettings(Activity):
 
     def _save(self):
         try:
-            editor = mpos.config.SharedPreferences(APP_ID).edit()
+            editor = SharedPreferences(APP_ID).edit()
             for key in DEFAULTS:
                 editor.put_int(key, self.values[key])
             editor.commit()

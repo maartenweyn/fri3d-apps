@@ -104,7 +104,11 @@ Two things the general docs get wrong for this build:
 1. **`from mpos import LightsManager` raises ImportError.** `LightsManager` is
    not in the `mpos` exports on this firmware. Use `mpos.lights` instead and
    fall back across both shapes.
-2. **The default audio output is the headset, not the buzzer.** Registered
+2. **`import mpos.config` raises ImportError.** The docs show
+   `mpos.config.SharedPreferences(app_id)`, but on this firmware there is no
+   `mpos.config` module: `SharedPreferences` is exported from `mpos` itself.
+   Import it as `from mpos import SharedPreferences`.
+3. **The default audio output is the headset, not the buzzer.** Registered
    outputs are `Headset+Communicator`, `Badge Buzzer` (kind `buzzer`),
    `Headset` and `Communicator`; inputs are a headset ADC mic and a
    communicator I2S mic. Pick the buzzer explicitly:

@@ -73,3 +73,7 @@ class AudioManager:
     def rtttl_player(cls, rtttl, stream_type=None, output=None):
         cls.routed.append(output)
         return _Player(rtttl)
+
+
+# The Fri3d 2026 firmware exports SharedPreferences from mpos itself.
+from mpos.config import SharedPreferences  # noqa: E402

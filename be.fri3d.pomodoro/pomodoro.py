@@ -10,8 +10,14 @@ import time
 import lvgl as lv
 
 from mpos import Activity, Intent
-import mpos.config
 import mpos.ui
+
+try:
+    # Fri3d 2026 firmware exports this from mpos directly; the docs show it
+    # living in mpos.config, which does not exist on this build.
+    from mpos import SharedPreferences
+except Exception:
+    from mpos.config import SharedPreferences
 
 
 
@@ -132,7 +138,7 @@ class Pomodoro(Activity):
 
     def _load(self):
         """Read config and counters. Returns True if the durations changed."""
-        prefs = mpos.config.SharedPreferences(APP_ID)
+        prefs = SharedPreferences(APP_ID)
         cfg = {}
         for key, default in DEFAULTS.items():
             try:
@@ -161,7 +167,7 @@ class Pomodoro(Activity):
 
     def _save(self):
         try:
-            editor = mpos.config.SharedPreferences(APP_ID).edit()
+            editor = SharedPreferences(APP_ID).edit()
             editor.put_string("day", self.day)
             editor.put_int("done_today", self.done_today)
             editor.put_int("round", self.round)
