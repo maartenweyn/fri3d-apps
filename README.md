@@ -41,10 +41,18 @@ runs at boot. To skip the launcher entirely, start the app from the REPL:
     from mpos import AppManager
     AppManager.start_app('be.fri3d.pomodoro')
 
+## Letting an agent drive the badge
+
+`tools/mcp/` holds a small MCP server that wraps these same mpremote calls, so
+an agent can install, run and debug on the badge without a human copying
+terminal output back and forth. Run `./tools/mcp/setup.sh` and follow what it
+prints. See `tools/mcp/README.md`.
+
 ## Layout
 
     be.fri3d.pomodoro/     the app as it is installed into /apps
     tools/                 scripts that run on the badge
+    tools/mcp/             MCP server exposing the badge over USB
     docs/                  notes on the MicroPythonOS API
     badge.sh               mpremote wrapper
 
