@@ -10,11 +10,14 @@ Claude sessions running in the cloud reach it through the desktop app's bridge.
 
     ./tools/mcp/setup.sh
 
-That creates `tools/mcp/.venv` with `mcp` and `mpremote` in it, and prints the
-JSON block to add to the Claude desktop app's MCP config
-(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS).
-Merge the `fri3d-badge` entry into any existing `mcpServers` object, then quit
-the Claude app fully and reopen it.
+That creates `tools/mcp/.venv` with `mcp` and `mpremote` in it, then registers
+the server in `~/Library/Application Support/Claude/claude_desktop_config.json`.
+It backs the file up first, creates it if it does not exist, and adds the
+`mcpServers` key if that is missing — which it is on a fresh install. Quit the
+Claude app completely afterwards (Cmd-Q, not just closing the window) and
+reopen it.
+
+Use `./tools/mcp/setup.sh --print` if you would rather paste the JSON yourself.
 
 ## Check it works
 
