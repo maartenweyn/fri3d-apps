@@ -1,17 +1,63 @@
-# Home Assistant side of Berichtjes
+# Berichtjes: setting it up
 
-These are the pieces Home Assistant needs so a dashboard button ends up on a
-badge, and so you can see at a glance whether anyone answered.
+Everything needed to get a badge chiming from a Home Assistant button, and the
+dashboard turning green when someone answers.
 
-The examples use two badges named `alice` and `bob`. Rename them to whatever you
-type in each badge's settings screen; the name on the badge and the name in the
-topic have to match exactly. The badge lowercases what you type and strips what
-cannot go in a topic, so type it in lowercase here too.
+About twenty minutes, most of it pasting YAML. Do the broker first, then the
+badge, then Home Assistant: each step is testable on its own, which is worth a
+lot when something does not work.
+
+## What you need
+
+- A Fri3d 2026 badge with the Berichtjes app installed. See the
+  [repository README](../../README.md) for installing an app.
+- Home Assistant.
+- An MQTT broker both can reach, normally the Mosquitto add-on, and the
+  [MQTT integration](https://www.home-assistant.io/integrations/mqtt/) set up in
+  Home Assistant.
+
+One badge is enough. The examples use two, `alice` and `bob`, because the second
+one is where the interesting mistakes live.
+
+## 1. Give the badges a broker login
+
+Do not reuse your own account. In the Mosquitto add-on configuration, add:
+
+```yaml
+logins:
+  - username: badge
+    password: something-long
+```
+
+Restart the add-on. One login for all your badges is fine; they are told apart
+by their client id, not by their user.
+
+A broker that refuses anonymous clients answers `CONNACK 5`, and so does a user
+that does not exist, so this is the first thing to check when a badge says
+`geen verbinding`. The badge spells it out as `login geweigerd` under the gear
+button, in Verbinding.
+
+## 2. Set up each badge
+
+Everything is typed on the badge itself, behind the gear button at the bottom
+left. No file to edit, so every badge runs an identical copy of the app.
+
+- **Deze badge** — the name. It goes straight into the MQTT topic, so the badge
+  lowercases it and strips anything a topic cannot carry. Give each badge its
+  own name and write down what you chose; Home Assistant needs the same.
+- **Verbinding** — broker address, port, user, password. Use Home Assistant's IP
+  rather than a `.local` name; mDNS is unreliable on an ESP32. The password is
+  never shown, and leaving the field empty keeps the one already stored.
+
+Settings are saved when you leave the screen, so go back rather than rebooting.
+Verbinding shows the live connection state while you are standing there, which
+is the point of it: type an address, go back, come in again, and it either says
+`verbonden met ...` or tells you why not.
 
     home/badges/<name>/msg      Home Assistant publishes, the badge listens
     home/badges/<name>/ack      the badge publishes when the button is tapped
 
-## Files, in the order to apply them
+## 3. Paste the Home Assistant side
 
 | File | Goes into |
 | --- | --- |
@@ -21,62 +67,81 @@ cannot go in a topic, so type it in lowercase here too.
 | `04-status-sensors.yaml` | your template config, normally `sensor_template.yaml` |
 | `05-lovelace-card.yaml` | pasted into a dashboard, not into a config file |
 
-Each file starts with a comment saying where it goes and what to watch out for.
+Each file starts with a comment saying where it goes and what to watch for.
+
+Rename `alice` and `bob` to the names you typed on the badges, everywhere they
+appear. That is the only edit most people need.
 
 **YAML does not allow a duplicate top-level key.** If your configuration already
 has `input_datetime:`, `input_text:` or `sensor:`, add the children from these
 examples to the key you already have rather than creating a second one. Check
 before pasting; this is the mistake that costs an evening.
 
+**Where automations live differs between setups.** These examples do not use any,
+but if you add one: `automation: !include_dir_merge_list automations/` means a
+root `automations.yaml` is not read at all, and your automation belongs in a file
+in that directory.
+
+Then validate under Developer tools, Check configuration, or `ha core check` on
+the host, and reload all YAML. Adding `input_datetime` or `input_text` entries
+needs a full restart on some versions.
+
+The dashboard card needs
+[button-card](https://github.com/custom-cards/button-card) from HACS, which is
+what gives a real red and green. Without it, replace the three status cards with
+plain `entities` rows showing the status sensors: you lose the colour and keep
+the information.
+
+## 4. Test it before wiring up buttons
+
+Developer tools, Actions, run `script.send_badge_message` with `target: alice`
+and any text. Within a second the badge should chime, blink, come to the
+foreground and show the message with the time it was sent.
+`sensor.badge_alice_status` should read `waiting`. Tap **Ontvangen** and it
+should read `confirmed`, with the other badges untouched at `neutral`.
+
+If the message never arrives, publish to the topic directly from Developer
+tools, Actions, `mqtt.publish` with topic `home/badges/alice/msg`. That separates
+"the script is wrong" from "the badge is not listening".
+
 ## How the status works
 
-Each badge gets a template sensor with three states: neutral, waiting,
-confirmed. Sending sets the badge's `input_datetime`, so the sensor goes to
-waiting. The badge publishes to the ack topic when the child taps the button,
-which timestamps the ack sensor, so the status goes to confirmed. Half an hour
-later both fall back to neutral.
-
-The dashboard colours on that: grey, red, green. Sending to both turns both rows
-red, and each turns green on its own as that child answers.
+Each badge gets a template sensor with three states. Sending stamps the badge's
+`input_datetime`, so the sensor reads `waiting`. The badge publishes to the ack
+topic when the button is tapped, which stamps the ack sensor, so it reads
+`confirmed`. Half an hour later both fall back to `neutral`.
 
 There is deliberately no automation and no notification. A template containing
-`now()` is re-rendered by Home Assistant every minute, so the fall back to
-neutral happens by itself, with no timer to survive a restart and nothing
-arriving on your phone at dinner time.
+`now()` is re-rendered every minute, so the fall back happens by itself, with no
+timer to survive a restart and nothing arriving on your phone at dinner time.
 
 **Keep the timeout in step.** The 1800 seconds in `04-status-sensors.yaml` and
-`ACK_TIMEOUT_MIN` in the badge's config are separate settings for the same idea.
-Different values mean a badge still blinking at a dashboard that has gone grey.
+the timeout on the badge are separate settings for the same idea. Different
+values mean a badge still blinking at a dashboard that has gone grey.
 
-## What to change
+## When it does not work
 
-1. The two names, `alice` and `bob`, everywhere they appear.
-2. The half hour, in both places, if that is too soon or too late.
+**`geen verbinding` on the badge.** Open the gear button, then Verbinding: it
+says why. `login geweigerd` is a wrong or missing broker user.
+`geen antwoord van de broker` is a wrong address, a wrong port, or a broker that
+is not running.
 
-The card needs `custom:button-card` from HACS, which is what gives a real red
-and green. Without it, replace the three status cards with plain `entities` rows
-showing the status sensors; you lose the colour and keep the information.
+**The connection drops every few seconds, but the WiFi is fine.** Almost always
+two clients using the same MQTT client id: a broker evicts the older of the two,
+so they take turns kicking each other off, forever, and it looks exactly like a
+flaky network. This app derives the id from the badge's MAC for that reason, so
+if you see this, look for something else on your network using a fixed client
+id. Check the badge's own view first: signal strength and connection failures
+are different layers, and treating one as the other wastes an evening.
 
-## After editing
+**Messages arrive but the dashboard stays grey.** The status sensors are
+template sensors; reload templates or restart. `sensor.badge_<name>_status`
+should exist under Developer tools, States.
 
-Validate with Developer tools, Check configuration, or `ha core check` on the
-host. Then Reload all YAML configuration, or restart if you added
-`input_datetime` or `input_text` entries, which need a restart on some versions.
+**The dashboard goes red and never green.** The badge acknowledges to
+`home/badges/<name>/ack` and Home Assistant listens on exactly that. A mismatch
+between the name typed on the badge and the name in your YAML gives precisely
+this: messages arrive, answers vanish.
 
-Test it before wiring up buttons: Developer tools, Actions, run
-`script.send_badge_message` with `target: alice` and any text. The badge should
-chime, blink and show the message within a second, its status should go red, and
-tapping Ontvangen should turn it green.
-
-## The broker
-
-The badges connect to the same MQTT broker as Home Assistant, normally the
-Mosquitto add-on on port 1883. Give the badges their own login rather than
-reusing yours: add a `logins:` entry in the add-on configuration, or create a
-Home Assistant user for them, and restart the add-on. A broker that refuses
-anonymous clients answers `CONNACK 5`, which is also what you get for a user
-that does not exist, so if a badge says "geen verbinding" that is the first
-thing to check.
-
-Broker address and credentials go in `dinerbadge_config.py` on the badge, which
-is gitignored. Nothing in this repository should ever hold them.
+**Nothing arrives after a rename.** The badge resubscribes on the spot, but Home
+Assistant is still publishing to the old topic. Update the YAML too.
