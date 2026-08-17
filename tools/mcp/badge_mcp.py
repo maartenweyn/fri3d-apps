@@ -49,7 +49,15 @@ class BadgeError(RuntimeError):
 
 
 def _run(args, timeout=DEFAULT_TIMEOUT):
-    cmd = [MPREMOTE] + args
+    # "resume" scheelt een soft reset per aanroep. Zonder dat stuurt mpremote
+    # bij elk commando eerst ctrl-C en dan ctrl-D voor het de raw REPL binnengaat
+    # (transport_serial.enter_raw_repl, soft_reset staat standaard aan). De badge
+    # herstart dan telkens: de app die op het scherm stond valt terug naar de
+    # launcher, een draaiende service begint opnieuw, en in de output verschijnt
+    # een KeyboardInterrupt uit task_handler.py. Bij een reeks metingen meet je
+    # dan steeds een vers opgestarte badge in plaats van de badge zoals hij
+    # draaide. Wie wel een schone start wil, roept badge_reset aan.
+    cmd = [MPREMOTE, "resume"] + args
     try:
         proc = subprocess.run(cmd, cwd=str(REPO), capture_output=True,
                               text=True, timeout=timeout)

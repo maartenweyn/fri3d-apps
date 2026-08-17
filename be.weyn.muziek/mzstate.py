@@ -56,6 +56,7 @@ favorieten = []          # [{titel, res, resmd}] van Sonos
 wekkers = []             # [{id, tijd, aan, herhaling, bron, volume, _ruw}]
 
 spotify_klaar = False    # is de playlistlijst ooit opgehaald deze sessie
+_sn = 0                  # servicenummer van Spotify, zie zorg_voor_sn
 
 
 def _wijzig(boodschap=None):
@@ -110,7 +111,8 @@ def prefs_lezen():
         p = SharedPreferences(PREFS_APP_ID)
         return {"uid": p.get_string("zone_uid", ""),
                 "ip": p.get_string("zone_ip", ""),
-                "naam": p.get_string("zone_naam", "")}
+                "naam": p.get_string("zone_naam", ""),
+                "sn": p.get_int("spotify_sn", 0)}
     except Exception as e:
         print("muziek: voorkeuren niet gelezen:", e)
         return {}
@@ -129,6 +131,36 @@ def prefs_schrijven(z):
     except Exception as e:
         print("muziek: voorkeuren niet bewaard:", e)
         return False
+
+
+def prefs_sn_schrijven(sn):
+    if SharedPreferences is None or not sn:
+        return False
+    try:
+        SharedPreferences(PREFS_APP_ID).edit().put_int("spotify_sn", int(sn)).commit()
+        return True
+    except Exception as e:
+        print("muziek: servicenummer niet bewaard:", e)
+        return False
+
+
+async def zorg_voor_sn(ip):
+    """Het Spotify-servicenummer, een keer opgevraagd en dan onthouden.
+
+    `ListAvailableServices` geeft de hele cataloog van Sonos terug, honderd
+    diensten lang, en dat kostte gemeten 3,5 van de 7,4 seconden die het
+    starten van een playlist duurde. Het nummer hangt aan het huishouden en
+    verandert niet, dus het hoort in de voorkeuren en niet in elke start."""
+    global _sn
+    if _sn:
+        return _sn
+    bewaard = prefs_lezen().get("sn") or 0
+    if bewaard:
+        _sn = int(bewaard)
+        return _sn
+    _sn = await mzsonos.spotify_sn(ip)
+    prefs_sn_schrijven(_sn)
+    return _sn
 
 
 # --- zones ----------------------------------------------------------------
@@ -297,8 +329,9 @@ async def speel_lijst(uri, titel=""):
     if z is None:
         return
     _wijzig("bezig met " + titel)
+    sn = await zorg_voor_sn(z["ip"])
     aantal = await mzsonos.play_spotify(z["ip"], uri, shuffle=SHUFFLE,
-                                        titel=titel, speler_uid=z["uid"])
+                                        titel=titel, speler_uid=z["uid"], sn=sn)
     _wijzig("%s, %d nummers" % (titel, aantal))
     await mzsonos.sleep_ms(700)
     await ververs_speler()
