@@ -8,6 +8,7 @@
 #   ./badge.sh reinstall [app]  remove that app from /apps, then install it
 #   ./badge.sh uninstall <app>  remove one app from /apps
 #   ./badge.sh diag [app]       why will it not load: files, manifest, imports, traceback
+#   ./badge.sh mpk [app]        build a distributable .mpk into dist/
 #   ./badge.sh refresh          rescan /apps so new apps show in the launcher
 #   ./badge.sh reset            reboot the badge
 #   ./badge.sh run <file.py>    run a local python file on the badge, print output
@@ -109,6 +110,9 @@ for d in ('/apps', '/builtin/apps'):
   diag)
     app="${1:-$DEFAULT_APP}"
     "$MPR" exec "APP_ID='$app'" run tools/diag.py
+    ;;
+  mpk)
+    ./tools/pack_mpk.sh "${1:-$DEFAULT_APP}"
     ;;
   refresh)
     refresh_launcher

@@ -1,64 +1,129 @@
 # fri3d-apps
 
-Apps for the Fri3d Camp badge, which runs MicroPythonOS on an ESP32-S3.
+Apps for the [Fri3d Camp](https://fri3d.be) badge, which runs
+[MicroPythonOS](https://micropythonos.com) on an ESP32-S3.
+
+Everything here is developed and tested against the **Fri3d 2026 badge**
+(hardware id `fri3d_2026`, 320x240 touchscreen, MicroPython 1.27).
 
 ## Apps
 
-- `be.fri3d.pomodoro/` — Pomodoro focus timer. Configurable focus and break
-  lengths, LED and buzzer alerts at each phase change, and a counter of the
-  sessions finished today.
+### Pomodoro — `be.fri3d.pomodoro`
 
-## Working with the badge
+A focus timer on your badge. Work, break, work, break, and a longer break every
+fourth round.
 
-Everything goes through `mpremote` over USB. Install it once:
+- **Configurable durations.** Focus, short break, long break, and how many
+  rounds before the long one. Settings survive a reboot.
+- **Alerts you can hear and see.** A short RTTTL chime on the badge buzzer and
+  a four-second LED blink at every phase change, each switchable.
+- **A daily counter.** How many pomodoros you finished today, reset at midnight.
+- **Touch and keys.** On-screen buttons, and the same buttons reachable with the
+  badge's d-pad because they sit in the default LVGL focus group.
+- **Auto-start**, off by default, to chain phases without touching the badge.
 
-    pipx install mpremote        # or: pip3 install --user mpremote
+| Control | What it does |
+| --- | --- |
+| Start / Pause | Run or hold the current phase |
+| Reset | Back to the full length of the current phase |
+| Skip | Jump to the next phase without an alert |
+| Gear | Durations, rounds, sound, LEDs, auto-start |
 
-Then use the helper script:
+The phase colour carries through the title, the countdown, the progress bar and
+the LEDs: red for focus, green for a short break, blue for a long one.
 
-    ./badge.sh probe            # report screen size, LEDs, audio, inputs
-    ./badge.sh list             # list installed and built-in apps
-    ./badge.sh wipe             # remove ALL user-installed apps from /apps
-    ./badge.sh install          # copy be.fri3d.pomodoro to the badge
-    ./badge.sh reinstall        # remove it from the badge first, then copy
-    ./badge.sh uninstall <id>   # remove one app
-    ./badge.sh diag             # why an app will not load, with the traceback
-    ./badge.sh refresh          # rescan /apps so the launcher sees new apps
-    ./badge.sh reset            # reboot the badge
+## Installing an app
+
+**With the [Fri3d-IDE](https://fri3dcamp.github.io/Fri3d-IDE/)**, which is what
+most people use. Build the package first:
+
+    ./tools/pack_mpk.sh be.fri3d.pomodoro
+
+That writes `dist/be.fri3d.pomodoro_0.1.0.mpk`. In the IDE, connect the badge
+and choose *Install MPK*.
+
+**Over USB with mpremote**, which is faster while developing:
+
+    ./badge.sh install
+
+**From BadgeHub**, once published: search for the app in the badge's App Store.
+
+## Working on an app
+
+`badge.sh` wraps `mpremote`. Install it once with `pipx install mpremote` or
+`pip3 install --user mpremote`.
+
+    ./badge.sh probe            # screen, fonts, inputs, LEDs, audio, build
+    ./badge.sh list             # installed and built-in apps
+    ./badge.sh install [app]    # copy to /apps and refresh the launcher
+    ./badge.sh reinstall [app]  # remove from the badge first, then copy
+    ./badge.sh uninstall <app>  # remove one app
+    ./badge.sh wipe             # remove every user-installed app
+    ./badge.sh diag [app]       # why it will not load, with real tracebacks
+    ./badge.sh refresh          # rescan /apps
+    ./badge.sh reset            # reboot
     ./badge.sh run <file.py>    # run a local script on the badge
     ./badge.sh repl             # MicroPython REPL, ctrl-] to quit
 
-Close the Fri3d-IDE browser tab before running these: a serial port can only
-be opened by one program at a time.
+A serial port takes one client at a time, so close the Fri3d-IDE tab before
+running these.
 
-`wipe` only clears `/apps`. Built-in apps live in the read-only `/builtin`
-and can only be changed by rebuilding the firmware.
+`./badge.sh diag` is the one worth knowing about. It lists the installed files,
+parses the manifest, reports which `mpos` frameworks and LVGL symbols actually
+exist on your firmware, then imports and constructs each activity and prints the
+traceback for whatever breaks first. Most load failures are a documented import
+that does not exist on this build, and that is what surfaces them.
 
-`install` and `reinstall` refresh the launcher themselves. If a new app still
-does not show up, `./badge.sh reset` reboots the badge, and app discovery also
-runs at boot. To skip the launcher entirely, start the app from the REPL:
+### Tests without a badge
 
-    from mpos import AppManager
-    AppManager.start_app('be.fri3d.pomodoro')
+The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
 
-## Letting an agent drive the badge
+    python3 tests/test_pomodoro.py
 
-`tools/mcp/` holds a small MCP server that wraps these same mpremote calls, so
-an agent can install, run and debug on the badge without a human copying
-terminal output back and forth. Run `./tools/mcp/setup.sh` and follow what it
-prints. See `tools/mcp/README.md`.
+29 checks covering the phase cycle, pause and resume timing, the day rollover,
+clamping in the settings screen, LED cleanup on exit, and that chimes are routed
+to the buzzer rather than the headset. The stubs deliberately mirror the quirks
+of the real firmware, so the fallback paths are what gets exercised.
+
+### Letting an agent drive the badge
+
+`tools/mcp/` is an MCP server that exposes the badge over USB, so a coding agent
+can install, run and debug on real hardware instead of asking you to paste
+terminal output back to it. Run `./tools/mcp/setup.sh` and see
+[tools/mcp/README.md](tools/mcp/README.md).
+
+## This firmware is not quite the documented one
+
+The MicroPythonOS documentation describes a build that differs from the one
+shipped on the Fri3d 2026 badge. Four differences bit us, all the same shape: a
+documented import or symbol simply is not there.
+
+1. `from mpos import LightsManager` raises. It lives in `mpos.lights`.
+2. `import mpos.config` raises. `SharedPreferences` is exported from `mpos`.
+3. `lv.ANIM` does not exist. Resolve LVGL constants across several spellings.
+4. The default audio output is the headset, so a chime you expect from the
+   buzzer goes to the headphone jack instead.
+
+[`docs/micropythonos-notes.md`](docs/micropythonos-notes.md) has the measured
+hardware facts and the working API notes. Check `dir()` on the device before
+trusting a documented import path.
 
 ## Layout
 
-    be.fri3d.pomodoro/     the app as it is installed into /apps
-    tools/                 scripts that run on the badge
-    tools/mcp/             MCP server exposing the badge over USB
-    docs/                  notes on the MicroPythonOS API
+    be.fri3d.pomodoro/     an app, in a folder named after its app id
     badge.sh               mpremote wrapper
+    tools/                 scripts that run on the badge, plus the packager
+    tools/mcp/             MCP server exposing the badge over USB
+    tests/                 lvgl and mpos stubs, offline tests
+    docs/                  notes on MicroPythonOS and this badge
+    dist/                  built .mpk files, not tracked
 
-## Tests
+Most badge apps live in their own repository, one app each. This one keeps the
+apps together because `badge.sh`, the stubs and the hardware notes are shared,
+and duplicating them across repositories costs more than it saves. Each app is a
+self-contained folder named after its app id, so any of them can be lifted into
+its own repository later without touching the code.
 
-The timer logic runs on a normal desktop Python against stubs for `lvgl`
-and `mpos`, so it can be checked without a badge attached:
+## Licence
 
-    python3 tests/test_pomodoro.py
+MIT. See [LICENSE](LICENSE).

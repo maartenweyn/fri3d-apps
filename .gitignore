@@ -1,6 +1,8 @@
+
+*.mpk
+*.pyc
 .DS_Store
 __pycache__/
-*.pyc
-*.mpk
-
+_to_delete/
+dist/
 tools/mcp/.venv/
