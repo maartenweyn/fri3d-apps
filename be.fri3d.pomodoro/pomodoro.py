@@ -73,6 +73,32 @@ FLASH_PERIOD_MS = 250
 GEAR = getattr(getattr(lv, "SYMBOL", None), "SETTINGS", None) or "Set"
 
 
+def _lv_const(group, name, fallback):
+    """Resolve an LVGL constant across binding styles.
+
+    Different lvgl_micropython builds expose these as `lv.GROUP.NAME`, as a
+    flat `lv.GROUP_NAME`, or as `lv.group_t.NAME`. The Fri3d 2026 build has
+    no `lv.ANIM` at all, so fall back to the numeric value.
+    """
+    holder = getattr(lv, group, None)
+    if holder is not None:
+        value = getattr(holder, name, None)
+        if value is not None:
+            return value
+    value = getattr(lv, group + "_" + name, None)
+    if value is not None:
+        return value
+    holder = getattr(lv, group.lower() + "_enable_t", None)
+    if holder is not None:
+        value = getattr(holder, name, None)
+        if value is not None:
+            return value
+    return fallback
+
+
+ANIM_OFF = _lv_const("ANIM", "OFF", 0)
+
+
 def _big_font():
     """Largest Montserrat font compiled into this build, or None."""
     for name in ("font_montserrat_48", "font_montserrat_40", "font_montserrat_36",
@@ -200,7 +226,7 @@ class Pomodoro(Activity):
         self.bar = lv.bar(self.root)
         self.bar.set_size(lv.pct(88), 8)
         self.bar.set_range(0, 1000)
-        self.bar.set_value(0, lv.ANIM.OFF)
+        self.bar.set_value(0, ANIM_OFF)
 
         self.status_label = lv.label(self.root)
         self.status_label.set_text("")
@@ -264,7 +290,7 @@ class Pomodoro(Activity):
         total = self._phase_ms()
         if total > 0:
             done = 1000 - (self.remaining_ms * 1000 // total)
-            self.bar.set_value(max(0, min(1000, done)), lv.ANIM.OFF)
+            self.bar.set_value(max(0, min(1000, done)), ANIM_OFF)
 
     # ----------------------------------------------------------------- the clock
 

@@ -84,7 +84,9 @@ EVENT = _Enum(CLICKED="clicked", VALUE_CHANGED="value_changed", KEY="key")
 FLEX_FLOW = _Enum(COLUMN=0, ROW=1)
 FLEX_ALIGN = _Enum(SPACE_EVENLY=0, CENTER=1, START=2)
 SCROLLBAR_MODE = _Enum(OFF=0)
-ANIM = _Enum(OFF=0, ON=1)
+# The Fri3d 2026 build has no lv.ANIM; it exposes the flat name instead.
+ANIM_OFF = 0
+ANIM_ON = 1
 OPA = _Enum(TRANSP=0)
 PART = _Enum(INDICATOR=1)
 STATE = _Enum(CHECKED="checked")

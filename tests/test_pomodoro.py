@@ -10,6 +10,8 @@ import os
 import sys
 import time
 
+sys.dont_write_bytecode = True   # never drop __pycache__ into the app folder
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "stubs"))

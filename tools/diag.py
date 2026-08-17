@@ -64,6 +64,54 @@ try:
 except Exception as exc:
     print("  mpos.ui.task_handler MISSING:", exc)
 
+section("lvgl symbols this app uses")
+import lvgl as lv
+
+CONSTANTS = (
+    ("ANIM", "OFF"), ("EVENT", "CLICKED"), ("EVENT", "VALUE_CHANGED"),
+    ("EVENT", "KEY"), ("FLEX_FLOW", "COLUMN"), ("FLEX_FLOW", "ROW"),
+    ("FLEX_ALIGN", "CENTER"), ("FLEX_ALIGN", "START"),
+    ("FLEX_ALIGN", "SPACE_EVENLY"), ("SCROLLBAR_MODE", "OFF"),
+    ("OPA", "TRANSP"), ("PART", "INDICATOR"), ("STATE", "CHECKED"),
+    ("SYMBOL", "SETTINGS"),
+)
+missing = []
+for group, name in CONSTANTS:
+    holder = getattr(lv, group, None)
+    found = holder is not None and getattr(holder, name, None) is not None
+    if not found:
+        flat = getattr(lv, group + "_" + name, None)
+        if flat is not None:
+            print("  lv.%s.%s -> only as lv.%s_%s" % (group, name, group, name))
+            continue
+        missing.append("lv.%s.%s" % (group, name))
+        print("  lv.%s.%s MISSING" % (group, name))
+for name in ("SIZE_CONTENT", "pct", "color_hex", "group_get_default",
+             "obj", "label", "button", "bar", "switch", "screen_active"):
+    if getattr(lv, name, None) is None:
+        missing.append("lv." + name)
+        print("  lv.%s MISSING" % name)
+print("  %d of %d symbols missing" % (len(missing), len(CONSTANTS) + 10))
+if missing:
+    print("  ->", missing)
+
+WIDGET_METHODS = (
+    ("bar", ("set_range", "set_value")),
+    ("label", ("set_text", "set_style_text_font", "set_style_text_color")),
+    ("obj", ("set_flex_flow", "set_flex_align", "set_style_pad_column",
+             "set_scrollbar_mode", "set_flex_grow")),
+    ("switch", ("add_state", "has_state")),
+)
+for factory, methods in WIDGET_METHODS:
+    try:
+        widget = getattr(lv, factory)()
+    except Exception as exc:
+        print("  lv.%s() failed: %s" % (factory, exc))
+        continue
+    absent = [m for m in methods if not hasattr(widget, m)]
+    if absent:
+        print("  lv.%s is missing %s" % (factory, absent))
+
 section("importing the activities")
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
