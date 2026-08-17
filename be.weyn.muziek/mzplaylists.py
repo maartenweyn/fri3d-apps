@@ -108,7 +108,14 @@ class MuziekLijsten(Activity):
         ui.leeg(self.lijst)
         if spotify:
             for p in state.lijsten:
-                tekst = "%s  (%d)" % (ui.kort(p["naam"], 26), p["aantal"])
+                # Spotify geeft voor deze playlists geen bruikbare tracks.total
+                # terug, dus alles kwam als "(0)" op het scherm. Een getal dat
+                # nul is als het onbekend is, is erger dan geen getal.
+                aantal = p.get("aantal") or 0
+                if aantal:
+                    tekst = "%s  (%d)" % (ui.kort(p["naam"], 26), aantal)
+                else:
+                    tekst = ui.kort(p["naam"], 32)
                 ui.knop(self.lijst, tekst,
                         lambda pp=p: self._speel_lijst(pp), hoogte=44)
             if not state.lijsten and not state.bezig:

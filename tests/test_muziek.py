@@ -565,6 +565,32 @@ def test_spotify_zonder_config():
         equal("de boodschap is voor het scherm", str(e), "Spotify is niet ingesteld")
 
 
+def test_cache_pad():
+    """De badge heeft geen /cache, ook al noemen de docs het. Gemeten:
+    [Errno 2] ENOENT bij elke poging de playlists te bewaren."""
+    oud = mzspotify.CACHE_MAPPEN
+    try:
+        mzspotify.CACHE_MAPPEN = ("/bestaat/niet", "/tmp")
+        pad = mzspotify.cache_pad()
+        check("valt terug op een map die er wel is",
+              pad == "/tmp/" + mzspotify.CACHE_BESTAND)
+        mzspotify.CACHE_MAPPEN = ("/bestaat/niet/en/valt/niet/te/maken",)
+        equal("zonder bruikbare map geeft hij None", mzspotify.cache_pad(), None)
+    finally:
+        mzspotify.CACHE_MAPPEN = oud
+
+
+def test_cache_zonder_pad_zwijgt():
+    oud = mzspotify.CACHE
+    try:
+        mzspotify.CACHE = None
+        equal("lezen zonder cache geeft leeg", mzspotify.cache_lezen(), [])
+        equal("schrijven zonder cache is geen fout",
+              mzspotify.cache_schrijven([{"naam": "A"}]), False)
+    finally:
+        mzspotify.CACHE = oud
+
+
 def test_spotify_cache(tmp="/tmp/muziek_playlists_test.json"):
     oud = mzspotify.CACHE
     mzspotify.CACHE = tmp
@@ -830,6 +856,31 @@ def test_playlists_scherm():
         knoppen = alle_knoppen(scherm.lijst)
         equal("een rij per playlist", len(knoppen), 2)
         equal("naam en aantal", knoppen[0].children[0].text, "Ochtend  (20)")
+
+        # Spotify geeft voor Maartens playlists geen bruikbare tracks.total,
+        # dus stond er overal "(0)". Een nul die "onbekend" betekent is erger
+        # dan helemaal geen getal.
+        state.lijsten = [{"naam": "Zonder telling", "uri": "spotify:playlist:C",
+                          "aantal": 0}]
+        state._wijzig()
+        scherm._teken()
+        knoppen = alle_knoppen(scherm.lijst)
+        equal("een aantal van nul komt niet op het scherm",
+              knoppen[0].children[0].text, "Zonder telling")
+        state.lijsten = [{"naam": "Zonder veld", "uri": "spotify:playlist:D"}]
+        state._wijzig()
+        scherm._teken()
+        knoppen = alle_knoppen(scherm.lijst)
+        equal("en een ontbrekend veld ook niet",
+              knoppen[0].children[0].text, "Zonder veld")
+
+        state.lijsten = [{"naam": "Ochtend", "uri": "spotify:playlist:A",
+                          "aantal": 20},
+                         {"naam": "Feest", "uri": "spotify:playlist:B",
+                          "aantal": 41}]
+        state._wijzig()
+        scherm._teken()
+        knoppen = alle_knoppen(scherm.lijst)
 
         taken.namen = []
         knoppen[0].click()

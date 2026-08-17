@@ -12,6 +12,7 @@ tools/spotify_auth.py. Het staat in muziek_config.py, dat gitignored is.
 """
 
 import json
+import os
 
 import mzsonos
 from mzsonos import SonosError, ticks_ms, ticks_diff, ticks_add
@@ -19,7 +20,29 @@ from mzsonos import SonosError, ticks_ms, ticks_diff, ticks_add
 ACCOUNTS = "accounts.spotify.com"
 API = "api.spotify.com"
 
-CACHE = "/cache/muziek_playlists.json"
+# /cache bestaat niet op deze badge, ook al noemen de docs het. Zoek een map
+# die er wel is of aan te maken valt, en zonder ook maar iets: een cache die
+# niet weggeschreven kan worden is geen fout, alleen een trager scherm.
+CACHE_MAPPEN = ("/cache", "/data")
+CACHE_BESTAND = "muziek_playlists.json"
+
+
+def cache_pad():
+    for d in CACHE_MAPPEN:
+        try:
+            os.stat(d)
+            return d + "/" + CACHE_BESTAND
+        except OSError:
+            pass
+        try:
+            os.mkdir(d)
+            return d + "/" + CACHE_BESTAND
+        except OSError:
+            continue
+    return None
+
+
+CACHE = cache_pad()
 
 _token = None
 _token_tot = None       # ticks_ms waarop het token verloopt, None is onbekend
@@ -113,6 +136,8 @@ async def playlists(client_id, refresh_token, maximum=60):
 
 
 def cache_lezen():
+    if not CACHE:
+        return []
     try:
         with open(CACHE) as f:
             data = json.load(f)
@@ -125,7 +150,9 @@ def cache_lezen():
 
 def cache_schrijven(items):
     """Zodat het scherm gevuld is voor het netwerk antwoordt. Mislukken mag:
-    /cache mag door het OS opgeruimd worden en dan halen we het gewoon opnieuw."""
+    de map mag door het OS opgeruimd worden en dan halen we het gewoon opnieuw."""
+    if not CACHE:
+        return False
     try:
         with open(CACHE, "w") as f:
             json.dump(items, f)
