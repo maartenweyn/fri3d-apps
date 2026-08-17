@@ -1,8 +1,12 @@
 """Pomodoro timer for the Fri3d badge, running on MicroPythonOS.
 
-Drive it with the touchscreen or with the badge keys: the buttons are added
-to the default focus group, so the d-pad moves focus and the action key
-presses the focused button.
+Built for a badge sitting on a desk rather than hanging on a lanyard, so the
+countdown is drawn as seven-segment digits that fill the screen and stay
+readable from across the room, and the five onboard LEDs act as an hourglass
+you can read out of the corner of your eye.
+
+Red means focus and green means break, which also tells anyone walking up to
+the desk whether they are interrupting.
 """
 
 import time
@@ -19,6 +23,12 @@ try:
 except Exception:
     from mpos.config import SharedPreferences
 
+try:
+    from mpos import AudioManager
+except Exception:
+    AudioManager = None
+
+from posettings import PomodoroSettings, APP_ID, DEFAULTS
 
 
 def _find_lights():
@@ -47,31 +57,6 @@ def _find_lights():
 
 LightsManager = _find_lights()
 
-try:
-    from mpos import AudioManager
-except Exception:
-    AudioManager = None
-
-from posettings import PomodoroSettings, APP_ID, DEFAULTS
-
-WORK = "work"
-SHORT = "short"
-LONG = "long"
-
-TITLES = {WORK: "Focus", SHORT: "Short break", LONG: "Long break"}
-COLORS = {WORK: 0xE5484D, SHORT: 0x30A46C, LONG: 0x3E63DD}
-LED_RGB = {WORK: (255, 40, 0), SHORT: (0, 255, 60), LONG: (0, 60, 255)}
-
-# Ring Tone Text Transfer Language, played on the badge buzzer.
-CHIME_END_WORK = "brk:d=4,o=5,b=160:8g,8c6,8e6,4g6"
-CHIME_END_BREAK = "wrk:d=4,o=5,b=160:8e6,8c6,8g,4e"
-
-LED_DIM = 0.12          # steady glow while the timer runs
-FLASH_MS = 4000         # how long the LEDs blink at a phase change
-FLASH_PERIOD_MS = 250
-
-GEAR = getattr(getattr(lv, "SYMBOL", None), "SETTINGS", None) or "Set"
-
 
 def _lv_const(group, name, fallback):
     """Resolve an LVGL constant across binding styles.
@@ -97,17 +82,128 @@ def _lv_const(group, name, fallback):
 
 
 ANIM_OFF = _lv_const("ANIM", "OFF", 0)
+SCROLL_OFF = _lv_const("SCROLLBAR_MODE", "OFF", 0)
+OPA_TRANSP = _lv_const("OPA", "TRANSP", 0)
+PART_INDICATOR = _lv_const("PART", "INDICATOR", 0x020000)
+GEAR = getattr(getattr(lv, "SYMBOL", None), "SETTINGS", None) or "Set"
+
+WORK = "work"
+SHORT = "short"
+LONG = "long"
+
+TITLES = {WORK: "Focus", SHORT: "Short break", LONG: "Long break"}
+COLORS = {WORK: 0xE5484D, SHORT: 0x30A46C, LONG: 0x3E63DD}
+LED_RGB = {WORK: (255, 30, 0), SHORT: (0, 255, 50), LONG: (0, 70, 255)}
+AMBER = (255, 150, 0)
+
+# Ring Tone Text Transfer Language, played on the badge buzzer. Short, because
+# the badge is an arm's length away. Rising when you are freed, falling when
+# you are called back, and a distinct one for the end of a long break.
+CHIME_END_WORK = "brk:d=8,o=5,b=180:c6,e6,g6"
+CHIME_END_SHORT = "wrk:d=8,o=5,b=180:g5,e5,c5"
+CHIME_END_LONG = "new:d=8,o=5,b=180:g5,c5,e5,4c5"
+
+SEGMENT_ON_OPA = 255
+SEGMENT_GHOST_OPA = 18
+FLASH_MS = 2000
+FLASH_PERIOD_MS = 200
+LED_INTERVAL_MS = 50
+PULSE_PERIOD_MS = 1400
 
 
-def _big_font():
-    """Largest Montserrat font compiled into this build, or None."""
-    for name in ("font_montserrat_48", "font_montserrat_40", "font_montserrat_36",
-                 "font_montserrat_32", "font_montserrat_28", "font_montserrat_24",
-                 "font_montserrat_20"):
-        font = getattr(lv, name, None)
-        if font is not None:
-            return font
-    return None
+class _Digit:
+    """One seven-segment digit, drawn as seven rectangles."""
+
+    SEGMENTS = {
+        "0": "abcdef", "1": "bc", "2": "abged", "3": "abgcd", "4": "fgbc",
+        "5": "afgcd", "6": "afgedc", "7": "abc", "8": "abcdefg", "9": "abcdfg",
+        " ": "",
+    }
+    ORDER = "abcdefg"
+
+    def __init__(self, parent, x, y, w, h, t):
+        mid = (h - t) // 2
+        boxes = {
+            "a": (t, 0, w - 2 * t, t),
+            "b": (w - t, t, t, mid - t),
+            "c": (w - t, mid + t, t, h - mid - 2 * t),
+            "d": (t, h - t, w - 2 * t, t),
+            "e": (0, mid + t, t, h - mid - 2 * t),
+            "f": (0, t, t, mid - t),
+            "g": (t, mid, w - 2 * t, t),
+        }
+        self.parts = {}
+        for name in self.ORDER:
+            bx, by, bw, bh = boxes[name]
+            part = lv.obj(parent)
+            part.set_pos(x + bx, y + by)
+            part.set_size(max(2, bw), max(2, bh))
+            part.set_style_border_width(0, 0)
+            part.set_style_radius(1, 0)
+            part.set_style_pad_all(0, 0)
+            part.set_scrollbar_mode(SCROLL_OFF)
+            self.parts[name] = part
+        self.value = None
+        self.color = None
+
+    def set(self, char, color):
+        if char == self.value and color == self.color:
+            return
+        self.value = char
+        self.color = color
+        lit = self.SEGMENTS.get(char, "")
+        shade = lv.color_hex(color)
+        for name, part in self.parts.items():
+            part.set_style_bg_color(shade, 0)
+            part.set_style_bg_opa(
+                SEGMENT_ON_OPA if name in lit else SEGMENT_GHOST_OPA, 0)
+
+
+class _Clock:
+    """MM:SS in seven-segment digits, sized to fill the space it is given."""
+
+    def __init__(self, parent, width, height):
+        self.height = height
+        thickness = max(4, height // 7)
+        digit_w = max(2 * thickness + 4, int(height * 0.58))
+        gap = max(3, digit_w // 8)
+        colon_w = thickness
+
+        xs = [0, digit_w + gap]
+        colon_x = 2 * digit_w + 2 * gap
+        xs.append(colon_x + colon_w + gap)
+        xs.append(xs[2] + digit_w + gap)
+        total = xs[3] + digit_w
+        offset = max(0, (width - total) // 2)
+
+        self.digits = [
+            _Digit(parent, offset + x, 0, digit_w, height, thickness)
+            for x in xs
+        ]
+
+        self.dots = []
+        for dot_y in (int(height * 0.30), int(height * 0.62)):
+            dot = lv.obj(parent)
+            dot.set_pos(offset + colon_x, dot_y)
+            dot.set_size(colon_w, thickness)
+            dot.set_style_border_width(0, 0)
+            dot.set_style_radius(1, 0)
+            dot.set_style_pad_all(0, 0)
+            dot.set_scrollbar_mode(SCROLL_OFF)
+            self.dots.append(dot)
+        self.dots_state = None
+
+    def set_time(self, text, color, dots_lit=True):
+        for digit, char in zip(self.digits, text[:2] + text[3:5]):
+            digit.set(char, color)
+        state = (color, bool(dots_lit))
+        if state != self.dots_state:
+            self.dots_state = state
+            shade = lv.color_hex(color)
+            for dot in self.dots:
+                dot.set_style_bg_color(shade, 0)
+                dot.set_style_bg_opa(
+                    SEGMENT_ON_OPA if dots_lit else SEGMENT_GHOST_OPA, 0)
 
 
 class Pomodoro(Activity):
@@ -122,9 +218,13 @@ class Pomodoro(Activity):
         self.round = 0
         self.done_today = 0
         self.day = ""
+        self.time_text = "--:--"
         self._shown = -1
+        self._dots = None
         self._flash_until = 0
-        self._led_key = None
+        self._led_state = None
+        self._led_last = 0
+        self._led_count = None
         self._ticking = False
         self._durations = None
         self._buzzer_out = False   # False = not looked up yet
@@ -201,43 +301,60 @@ class Pomodoro(Activity):
         except Exception as exc:
             print("pomodoro: could not save state:", exc)
 
-    # ------------------------------------------------------------------ user interface
+    # ------------------------------------------------------------------ interface
+
+    def _screen_size(self):
+        try:
+            active = lv.screen_active()
+            width, height = active.get_width(), active.get_height()
+            if width and height:
+                return width, height
+        except Exception:
+            pass
+        return 320, 240
 
     def _build(self):
+        width, height = self._screen_size()
+
         self.root = lv.obj()
-        self.root.set_style_pad_all(8, 0)
+        self.root.set_style_pad_all(0, 0)
         self.root.set_style_border_width(0, 0)
         self.root.set_style_radius(0, 0)
-        self.root.set_scrollbar_mode(lv.SCROLLBAR_MODE.OFF)
-        self.root.set_flex_flow(lv.FLEX_FLOW.COLUMN)
-        self.root.set_flex_align(lv.FLEX_ALIGN.SPACE_EVENLY,
-                                 lv.FLEX_ALIGN.CENTER,
-                                 lv.FLEX_ALIGN.CENTER)
+        self.root.set_scrollbar_mode(SCROLL_OFF)
 
         self.phase_label = lv.label(self.root)
         self.phase_label.set_text(TITLES[WORK])
+        self.phase_label.align(lv.ALIGN.TOP_MID, 0, 4)
 
-        self.time_label = lv.label(self.root)
-        font = _big_font()
-        if font is not None:
-            self.time_label.set_style_text_font(font, 0)
-        self.time_label.set_text("--:--")
+        clock_h = max(48, int(height * 0.44))
+        clock_w = width - 16
+        holder = lv.obj(self.root)
+        holder.set_size(clock_w, clock_h)
+        holder.align(lv.ALIGN.TOP_MID, 0, 26)
+        holder.set_style_border_width(0, 0)
+        holder.set_style_bg_opa(OPA_TRANSP, 0)
+        holder.set_style_pad_all(0, 0)
+        holder.set_scrollbar_mode(SCROLL_OFF)
+        self.clock = _Clock(holder, clock_w, clock_h)
 
         self.bar = lv.bar(self.root)
-        self.bar.set_size(lv.pct(88), 8)
+        self.bar.set_size(width - 40, 6)
+        self.bar.align(lv.ALIGN.TOP_MID, 0, 30 + clock_h)
         self.bar.set_range(0, 1000)
         self.bar.set_value(0, ANIM_OFF)
 
         self.status_label = lv.label(self.root)
         self.status_label.set_text("")
+        self.status_label.align(lv.ALIGN.TOP_MID, 0, 42 + clock_h)
 
         row = lv.obj(self.root)
-        row.set_size(lv.pct(100), lv.SIZE_CONTENT)
+        row.set_size(width, 48)
+        row.align(lv.ALIGN.BOTTOM_MID, 0, 0)
         row.set_style_border_width(0, 0)
-        row.set_style_bg_opa(lv.OPA.TRANSP, 0)
-        row.set_style_pad_all(0, 0)
+        row.set_style_bg_opa(OPA_TRANSP, 0)
+        row.set_style_pad_all(2, 0)
         row.set_style_pad_column(4, 0)
-        row.set_scrollbar_mode(lv.SCROLLBAR_MODE.OFF)
+        row.set_scrollbar_mode(SCROLL_OFF)
         row.set_flex_flow(lv.FLEX_FLOW.ROW)
         row.set_flex_align(lv.FLEX_ALIGN.SPACE_EVENLY,
                            lv.FLEX_ALIGN.CENTER,
@@ -250,7 +367,7 @@ class Pomodoro(Activity):
 
     def _button(self, parent, text, callback):
         btn = lv.button(parent)
-        btn.set_style_pad_hor(8, 0)
+        btn.set_style_pad_hor(6, 0)
         btn.set_style_pad_ver(6, 0)
         label = lv.label(btn)
         label.set_text(text)
@@ -266,12 +383,11 @@ class Pomodoro(Activity):
 
     def _draw(self):
         """Full refresh after a state change."""
-        color = lv.color_hex(COLORS[self.phase])
+        color = COLORS[self.phase]
         self.phase_label.set_text(TITLES[self.phase])
-        self.phase_label.set_style_text_color(color, 0)
-        self.time_label.set_style_text_color(color, 0)
+        self.phase_label.set_style_text_color(lv.color_hex(color), 0)
         try:
-            self.bar.set_style_bg_color(color, lv.PART.INDICATOR)
+            self.bar.set_style_bg_color(lv.color_hex(color), PART_INDICATOR)
         except Exception:
             pass
         self.start_lbl.set_text("Pause" if self.running else "Start")
@@ -279,14 +395,18 @@ class Pomodoro(Activity):
         self.status_label.set_text("Round %d/%d    Today %d" % (
             (self.round % rounds) + 1, rounds, self.done_today))
         self._shown = -1
+        self._dots = None
         self._update_time()
 
     def _update_time(self):
         secs = (self.remaining_ms + 999) // 1000
-        if secs == self._shown:
+        dots = (not self.running) or (secs % 2 == 0)
+        if secs == self._shown and dots == self._dots:
             return
         self._shown = secs
-        self.time_label.set_text("%02d:%02d" % (secs // 60, secs % 60))
+        self._dots = dots
+        self.time_text = "%02d:%02d" % (secs // 60, secs % 60)
+        self.clock.set_time(self.time_text, COLORS[self.phase], dots)
         total = self._phase_ms()
         if total > 0:
             done = 1000 - (self.remaining_ms * 1000 // total)
@@ -381,7 +501,12 @@ class Pomodoro(Activity):
 
     def _alert(self, finished_phase):
         if self.cfg["sound"]:
-            self._play(CHIME_END_WORK if finished_phase == WORK else CHIME_END_BREAK)
+            if finished_phase == WORK:
+                self._play(CHIME_END_WORK)
+            elif finished_phase == SHORT:
+                self._play(CHIME_END_SHORT)
+            else:
+                self._play(CHIME_END_LONG)
         if self.cfg["leds"]:
             self._flash_until = time.ticks_add(time.ticks_ms(), FLASH_MS)
 
@@ -402,15 +527,18 @@ class Pomodoro(Activity):
     def _play(self, rtttl):
         if AudioManager is None:
             return
+        options = {"stream_type": AudioManager.STREAM_ALARM}
         buzzer = self._buzzer()
+        if buzzer is not None:
+            options["output"] = buzzer
+        volume = self.cfg.get("volume")
         try:
-            if buzzer is not None:
-                AudioManager.rtttl_player(
-                    rtttl, stream_type=AudioManager.STREAM_ALARM,
-                    output=buzzer).start()
-            else:
-                AudioManager.rtttl_player(
-                    rtttl, stream_type=AudioManager.STREAM_ALARM).start()
+            AudioManager.rtttl_player(rtttl, volume=volume, **options).start()
+            return
+        except Exception:
+            pass
+        try:
+            AudioManager.rtttl_player(rtttl, **options).start()
         except Exception as exc:
             print("pomodoro: could not play chime:", exc)
 
@@ -420,39 +548,91 @@ class Pomodoro(Activity):
         except Exception:
             return False
 
-    def _leds_apply(self, key, rgb):
-        if key == self._led_key:
+    def _leds_n(self):
+        if self._led_count is None:
+            try:
+                self._led_count = max(1, LightsManager.get_led_count())
+            except Exception:
+                self._led_count = 1
+        return self._led_count
+
+    def _dim(self, rgb, factor=1.0):
+        """Scale a colour by the brightness setting, clamped to a valid range."""
+        level = max(1, min(100, self.cfg.get("brightness", 10))) / 100.0 * factor
+        return tuple(max(0, min(255, int(channel * level))) for channel in rgb)
+
+    def _led_colors(self, now):
+        """One (r, g, b) per LED, before brightness is applied."""
+        count = self._leds_n()
+        off = (0, 0, 0)
+
+        if time.ticks_diff(self._flash_until, now) > 0:
+            # Brighter than the steady glow so it registers, but still scaled by
+            # the brightness setting: this is a desk lamp, not a strobe.
+            lit = (now // FLASH_PERIOD_MS) % 2 == 0
+            return [self._dim(LED_RGB[self.phase], 4.0) if lit else off] * count
+
+        if self.running:
+            total = self._phase_ms()
+            fraction = 1.0 if total <= 0 else max(0.0, self.remaining_ms / total)
+            # LEDs run out like sand: all lit at the start, one left at the end.
+            remaining = int(fraction * count)
+            if fraction > 0 and remaining < 1:
+                remaining = 1
+            steady = self._dim(LED_RGB[self.phase])
+            colors = [steady] * remaining + [off] * (count - remaining)
+            if remaining:
+                # The last one breathes, so the end of the phase is felt coming.
+                span = PULSE_PERIOD_MS
+                position = (now % span) * 2.0 / span
+                wave = position if position < 1.0 else 2.0 - position
+                colors[remaining - 1] = self._dim(LED_RGB[self.phase],
+                                                  0.25 + 0.75 * wave)
+            return colors
+
+        if self.remaining_ms < self._phase_ms():
+            # Paused, which should look different from switched off.
+            span = PULSE_PERIOD_MS * 2
+            position = (now % span) * 2.0 / span
+            wave = position if position < 1.0 else 2.0 - position
+            colors = [off] * count
+            colors[count // 2] = self._dim(AMBER, 0.3 + 0.7 * wave)
+            return colors
+
+        # Idle at the top of a phase: show which phase is waiting.
+        colors = [off] * count
+        colors[0] = self._dim(LED_RGB[self.phase], 0.6)
+        return colors
+
+    def _leds_update(self, now):
+        if not self.cfg["leds"] or not self._leds_ok():
+            if self._led_state is not None:
+                self._leds_clear()
             return
-        self._led_key = key
+        if self._led_state is not None and time.ticks_diff(now, self._led_last) < LED_INTERVAL_MS:
+            return
+        self._led_last = now
+
+        colors = self._led_colors(now)
+        if colors == self._led_state:
+            return
+        self._led_state = colors
         try:
-            if rgb is None:
-                LightsManager.clear()
-            else:
-                LightsManager.set_all(*rgb)
+            for index, (red, green, blue) in enumerate(colors):
+                LightsManager.set_led(index, red, green, blue)
             LightsManager.write()
         except Exception as exc:
             print("pomodoro: LED update failed:", exc)
 
-    def _leds_update(self, now):
-        if not self.cfg["leds"] or not self._leds_ok():
-            return
-        if time.ticks_diff(self._flash_until, now) > 0:
-            on = (now // FLASH_PERIOD_MS) % 2 == 0
-            self._leds_apply(("flash", self.phase, on),
-                             LED_RGB[self.phase] if on else None)
-            return
-        if self.running:
-            r, g, b = LED_RGB[self.phase]
-            self._leds_apply(("run", self.phase),
-                             (int(r * LED_DIM), int(g * LED_DIM), int(b * LED_DIM)))
-        else:
-            self._leds_apply(("off",), None)
-
     def _leds_clear(self):
         self._flash_until = 0
+        self._led_state = None
         if self._leds_ok():
-            self._led_key = None
-            self._leds_apply(("off",), None)
+            try:
+                LightsManager.clear()
+                LightsManager.write()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ settings
 

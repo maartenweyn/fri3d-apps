@@ -24,14 +24,18 @@ DEFAULTS = {
     "sound": 1,
     "leds": 1,
     "autostart": 0,
+    "brightness": 10,   # percent; the badge sits an arm's length away
+    "volume": 60,
 }
 
-# key, label, minimum, maximum
+# key, label, minimum, maximum, step
 NUMBERS = (
-    ("work_min", "Focus", 1, 90),
-    ("short_min", "Short break", 1, 30),
-    ("long_min", "Long break", 1, 60),
-    ("rounds", "Rounds to long", 2, 8),
+    ("work_min", "Focus", 1, 90, 1),
+    ("short_min", "Short break", 1, 30, 1),
+    ("long_min", "Long break", 1, 60, 1),
+    ("rounds", "Rounds to long", 2, 8, 1),
+    ("brightness", "LED brightness", 1, 100, 5),
+    ("volume", "Chime volume", 0, 100, 10),
 )
 
 SWITCHES = (
@@ -61,12 +65,13 @@ class PomodoroSettings(Activity):
         screen.set_style_pad_all(6, 0)
         screen.set_style_pad_row(4, 0)
         screen.set_flex_flow(lv.FLEX_FLOW.COLUMN)
+        # More rows than fit on 320x240, so this list scrolls.
 
         title = lv.label(screen)
         title.set_text("Pomodoro settings")
 
-        for key, text, low, high in NUMBERS:
-            self._number_row(screen, key, text, low, high)
+        for key, text, low, high, step in NUMBERS:
+            self._number_row(screen, key, text, low, high, step)
         for key, text in SWITCHES:
             self._switch_row(screen, key, text)
 
@@ -114,7 +119,7 @@ class PomodoroSettings(Activity):
         except Exception:
             pass
 
-    def _number_row(self, parent, key, text, low, high):
+    def _number_row(self, parent, key, text, low, high, step=1):
         row = self._row(parent)
 
         name = lv.label(row)
@@ -124,13 +129,13 @@ class PomodoroSettings(Activity):
         except Exception:
             pass
 
-        self._small_button(row, "-", lambda k=key, lo=low, hi=high: self._bump(k, -1, lo, hi))
+        self._small_button(row, "-", lambda k=key, lo=low, hi=high, st=step: self._bump(k, -st, lo, hi))
 
         value = lv.label(row)
         value.set_text(str(self.values[key]))
         self.value_labels[key] = value
 
-        self._small_button(row, "+", lambda k=key, lo=low, hi=high: self._bump(k, 1, lo, hi))
+        self._small_button(row, "+", lambda k=key, lo=low, hi=high, st=step: self._bump(k, st, lo, hi))
 
     def _switch_row(self, parent, key, text):
         row = self._row(parent)

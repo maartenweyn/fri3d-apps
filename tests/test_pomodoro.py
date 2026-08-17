@@ -46,7 +46,7 @@ app = pomodoro.Pomodoro()
 app.onCreate()
 app.onResume(app._view)
 check(app.phase == pomodoro.WORK, "starts in the focus phase")
-check(app.time_label.text == "25:00", "shows 25:00, got %r" % app.time_label.text)
+check(app.time_text == "25:00", "shows 25:00, got %r" % app.time_text)
 check(app.start_lbl.text == "Start", "start button reads Start")
 check("Round 1/4" in app.status_label.text, "status shows round 1/4: %r" % app.status_label.text)
 
@@ -54,7 +54,7 @@ print("=== start, tick, pause, resume ===")
 app._toggle()
 check(app.running and app.start_lbl.text == "Pause", "toggle starts the timer")
 advance(app, 61_000)
-check(app.time_label.text == "23:59", "61 s elapsed -> 23:59, got %r" % app.time_label.text)
+check(app.time_text == "23:59", "61 s elapsed -> 23:59, got %r" % app.time_text)
 app._toggle()
 check(not app.running, "second toggle pauses")
 before = app.remaining_ms
@@ -62,7 +62,7 @@ advance(app, 30_000)
 check(app.remaining_ms == before, "clock frozen while paused")
 app._toggle()
 advance(app, 60_000)
-check(app.time_label.text == "22:59", "resumes from where it stopped, got %r" % app.time_label.text)
+check(app.time_text == "22:59", "resumes from where it stopped, got %r" % app.time_text)
 
 print("=== full cycle: work -> short -> ... -> long ===")
 cfg._STORE.clear()
@@ -72,7 +72,7 @@ mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 1)
     .put_int("sound", 1).put_int("leds", 1).put_int("autostart", 1).commit()
 app = pomodoro.Pomodoro()
 app.onCreate(); app.onResume(app._view)
-check(app.time_label.text == "01:00", "picks up configured 1 minute, got %r" % app.time_label.text)
+check(app.time_text == "01:00", "picks up configured 1 minute, got %r" % app.time_text)
 app._toggle()
 seen = []
 for _ in range(8):
@@ -83,6 +83,11 @@ expected = [pomodoro.SHORT, pomodoro.WORK, pomodoro.SHORT, pomodoro.WORK,
 check(seen == expected, "phase order %s" % (seen,))
 check(app.done_today == 4, "four pomodoros counted, got %d" % app.done_today)
 check(len(AudioManager.played) == 8, "a chime at every transition, got %d" % len(AudioManager.played))
+check(len(set(AudioManager.played)) == 3, "three distinct chimes, got %d" % len(set(AudioManager.played)))
+check(AudioManager.played[6] == pomodoro.CHIME_END_WORK
+      and AudioManager.played[7] == pomodoro.CHIME_END_LONG,
+      "the long break ends with its own chime")
+check(all(v == 60 for v in AudioManager.volumes), "chime volume passed through: %s" % set(AudioManager.volumes))
 check(len(LightsManager.log) > 8, "LEDs were driven (%d writes)" % len(LightsManager.log))
 check(pomodoro.LightsManager is LightsManager, "LightsManager resolved via mpos.lights")
 check(AudioManager.routed and all(o is not None and o.kind == "buzzer" for o in AudioManager.routed),
@@ -132,10 +137,63 @@ check(cfg._STORE["be.fri3d.pomodoro"]["work_min"] == 1, "settings persisted on l
 
 print("=== settings feed back into the timer ===")
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
-check(app.time_label.text == "01:00", "timer picks up the new 1 minute, got %r" % app.time_label.text)
+check(app.time_text == "01:00", "timer picks up the new 1 minute, got %r" % app.time_text)
 app.onPause(app._view)
-check(LightsManager.log[-1] == (0, 0, 0), "LEDs cleared on leaving the app")
+check(LightsManager.leds == [(0, 0, 0)] * 5, "LEDs cleared on leaving the app")
 check(app.update_frame not in pomodoro.mpos.ui.task_handler.cbs, "frame callback unregistered on pause")
+
+print("=== LEDs behave like an hourglass ===")
+cfg._STORE.clear()
+LightsManager.reset()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+    .put_int("leds", 1).put_int("brightness", 20).put_int("autostart", 0).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+app._toggle()
+counts = []
+for _ in range(5):
+    advance(app, 60_000)
+    counts.append(LightsManager.lit())
+check(counts == sorted(counts, reverse=True) and counts[0] >= counts[-1],
+      "lit LEDs only ever decrease: %s" % (counts,))
+check(counts[0] >= 4 and counts[-1] == 1,
+      "starts nearly full and ends with one lit: %s" % (counts,))
+check(max(max(led) for led in LightsManager.leds) <= 255 * 20 // 100 + 1,
+      "brightness setting caps the output: %s" % (LightsManager.leds,))
+check(all(led[0] > 4 * max(led[1], led[2]) for led in LightsManager.leds if max(led)),
+      "focus phase reads as red: %s" % (LightsManager.leds,))
+
+print("=== paused looks different from off ===")
+cfg._STORE.clear()
+LightsManager.reset()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+    .put_int("leds", 1).put_int("brightness", 40).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+app._toggle(); advance(app, 60_000); app._toggle()
+advance(app, 1_000)
+lit = [led for led in LightsManager.leds if max(led) > 0]
+check(len(lit) == 1, "exactly one LED marks a paused timer: %s" % (LightsManager.leds,))
+check(lit and lit[0][0] > 0 and lit[0][1] > 0 and lit[0][2] == 0,
+      "and it is amber, not a phase colour: %s" % (lit,))
+app.onPause(app._view)
+check(LightsManager.leds == [(0, 0, 0)] * 5, "all LEDs off when leaving the app")
+
+print("=== brightness of zero-ish still produces valid colours ===")
+cfg._STORE.clear()
+LightsManager.reset()
+mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+    .put_int("leds", 1).put_int("brightness", 1).commit()
+app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
+app._toggle(); advance(app, 5_000)
+check(True, "no assertion tripped in the LED stub at brightness 1")
+
+print("=== the clock renders as digits ===")
+check(app.time_text.count(":") == 1 and len(app.time_text) == 5,
+      "time text is MM:SS, got %r" % app.time_text)
+segs = app.clock.digits[0].parts
+check(len(segs) == 7, "each digit has seven segments, got %d" % len(segs))
+app.clock.set_time("08:15", 0xFFFFFF, True)
+check(app.clock.digits[0].value == "0" and app.clock.digits[3].value == "5",
+      "digits map to the right characters")
 
 print()
 print("%d check(s) failed" % len(fails))

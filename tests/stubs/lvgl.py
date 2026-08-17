@@ -63,6 +63,18 @@ def switch(parent=None):
     return Obj(parent)
 
 
+class _Screen:
+    def get_width(self):
+        return 320
+
+    def get_height(self):
+        return 240
+
+
+def screen_active():
+    return _Screen()
+
+
 def pct(v):
     return v
 
@@ -92,4 +104,5 @@ PART = _Enum(INDICATOR=1)
 STATE = _Enum(CHECKED="checked")
 SYMBOL = _Enum(SETTINGS="")
 SIZE_CONTENT = 0x7FFF
+ALIGN = _Enum(TOP_MID=0, BOTTOM_MID=1, CENTER=2, TOP_LEFT=3)
 font_montserrat_28 = object()

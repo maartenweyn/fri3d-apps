@@ -2,6 +2,26 @@
 
 ## Pomodoro
 
+### 0.2.0
+
+Reworked for a badge that sits on a desk rather than hanging on a lanyard.
+
+- The countdown is drawn as seven-segment digits filling most of the screen,
+  readable from across the room. This also sidesteps the largest built-in font
+  being `montserrat_28`, which was too small to read at desk distance.
+- The five LEDs now run out like sand: all lit at the start of a phase, one
+  fewer as each fifth passes, and the last one breathes so the end is felt
+  coming. Red for focus and green for a break, which doubles as a signal to
+  anyone approaching the desk.
+- A paused timer shows a single breathing amber LED, so paused no longer looks
+  the same as switched off.
+- LED brightness is configurable and defaults to 10 percent, because five RGB
+  LEDs at arm's length are unpleasant at full power.
+- Three distinct chimes instead of two: end of focus rises, end of a short
+  break falls, and the end of a long break has its own. All shortened, with a
+  configurable volume.
+- The phase-change flash is two seconds rather than four.
+
 ### 0.1.0
 
 First release. Focus and break phases with configurable durations, LED and

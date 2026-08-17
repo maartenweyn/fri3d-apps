@@ -57,6 +57,7 @@ class AudioManager:
     STREAM_MUSIC = 0
     played = []
     routed = []
+    volumes = []
     outputs = [_Output("Headset Output", "i2s"), _Output("Badge Buzzer", "buzzer")]
 
     Output = _Output
@@ -70,8 +71,9 @@ class AudioManager:
         return cls.outputs[0]
 
     @classmethod
-    def rtttl_player(cls, rtttl, stream_type=None, output=None):
+    def rtttl_player(cls, rtttl, stream_type=None, output=None, volume=None):
         cls.routed.append(output)
+        cls.volumes.append(volume)
         return _Player(rtttl)
 
 

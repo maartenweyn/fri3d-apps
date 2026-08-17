@@ -13,10 +13,26 @@ Everything here is developed and tested against the **Fri3d 2026 badge**
 A focus timer on your badge. Work, break, work, break, and a longer break every
 fourth round.
 
-- **Configurable durations.** Focus, short break, long break, and how many
-  rounds before the long one. Settings survive a reboot.
-- **Alerts you can hear and see.** A short RTTTL chime on the badge buzzer and
-  a four-second LED blink at every phase change, each switchable.
+Built for a badge sitting on a desk, which shapes most of the design.
+
+- **A countdown you can read from across the room.** Seven-segment digits drawn
+  with LVGL rectangles, filling most of the screen. The largest font compiled
+  into this firmware is `montserrat_28`, far too small at desk distance, so the
+  digits are drawn rather than typeset.
+- **LEDs that run out like sand.** All five lit at the start of a phase, one
+  fewer as each fifth passes, and the last one breathing so you feel the end
+  approaching. You read it out of the corner of your eye without looking away
+  from what you are doing.
+- **Red means focus, green means break.** That is also the signal to anyone
+  walking up to your desk about whether they are interrupting.
+- **A paused timer is visibly paused**, one breathing amber LED, rather than
+  indistinguishable from switched off.
+- **Three distinct chimes.** Rising when you are freed, falling when you are
+  called back, and its own tone for the end of a long break, so you know what
+  happened without looking.
+- **Configurable durations**, plus LED brightness and chime volume, because a
+  device at arm's length needs different levels than one on a lanyard. Settings
+  survive a reboot.
 - **A daily counter.** How many pomodoros you finished today, reset at midnight.
 - **Touch and keys.** On-screen buttons, and the same buttons reachable with the
   badge's d-pad because they sit in the default LVGL focus group.
@@ -29,8 +45,12 @@ fourth round.
 | Skip | Jump to the next phase without an alert |
 | Gear | Durations, rounds, sound, LEDs, auto-start |
 
-The phase colour carries through the title, the countdown, the progress bar and
+The phase colour carries through the title, the digits, the progress bar and
 the LEDs: red for focus, green for a short break, blue for a long one.
+
+Known limitation: the timer only runs while the app is in the foreground.
+Switch to another app and it stops. Moving it into a MicroPythonOS Service is
+the next piece of work.
 
 ## Installing an app
 
@@ -80,8 +100,9 @@ The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
 
     python3 tests/test_pomodoro.py
 
-29 checks covering the phase cycle, pause and resume timing, the day rollover,
-clamping in the settings screen, LED cleanup on exit, and that chimes are routed
+44 checks covering the phase cycle, pause and resume timing, the day rollover,
+clamping in the settings screen, LED cleanup on exit, that the LED hourglass
+only ever empties, that a paused timer shows amber, and that chimes are routed
 to the buzzer rather than the headset. The stubs deliberately mirror the quirks
 of the real firmware, so the fallback paths are what gets exercised.
 
