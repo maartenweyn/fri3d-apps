@@ -14,14 +14,18 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # MCP Python SDK 2.x: FastMCP was folded in and renamed.
+    from mcp.server import MCPServer as _McpServer
+except ImportError:  # SDK 1.x
+    from mcp.server.fastmcp import FastMCP as _McpServer
 
 REPO = Path(os.environ.get("FRI3D_REPO", Path(__file__).resolve().parents[2]))
 MPREMOTE = os.environ.get("MPREMOTE") or shutil.which("mpremote") or "mpremote"
 DEFAULT_APP = os.environ.get("FRI3D_APP", "be.fri3d.pomodoro")
 DEFAULT_TIMEOUT = 60
 
-mcp = FastMCP("fri3d-badge")
+mcp = _McpServer("fri3d-badge")
 
 
 class BadgeError(RuntimeError):

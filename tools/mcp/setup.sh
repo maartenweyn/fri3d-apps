@@ -18,15 +18,14 @@ python3 -m venv .venv
 ./.venv/bin/pip list 2>/dev/null | grep -Ei '^(mcp|mpremote) ' || true
 
 echo
-echo "Checking the server starts..."
-if ./.venv/bin/python -c "import badge_mcp" 2>/dev/null; then
-  echo "  imports cleanly"
-else
-  ./.venv/bin/python -c "import badge_mcp" || {
-    echo "  the server does not import; fix that before registering it" >&2
-    exit 1
-  }
-fi
+echo "Checking the server starts and registers its tools..."
+./.venv/bin/python - <<'PY' || { echo "  fix that before registering it" >&2; exit 1; }
+import asyncio
+import badge_mcp
+tools = asyncio.run(badge_mcp.mcp.list_tools())
+print("  %s: %d tools" % (badge_mcp.mcp.name, len(tools)))
+print("  " + ", ".join(sorted(t.name for t in tools)))
+PY
 
 BLOCK=$(cat <<JSON
     "fri3d-badge": {
