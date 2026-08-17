@@ -1,0 +1,21 @@
+{
+  "name": "Pomodoro",
+  "publisher": "Maarten Weyn",
+  "short_description": "Focus timer with LED and sound alerts",
+  "long_description": "A Pomodoro timer for the Fri3d badge. Configurable focus and break lengths, LED and buzzer alerts at every phase change, and a counter of the sessions you finished today.",
+  "fullname": "be.fri3d.pomodoro",
+  "version": "0.1.0",
+  "categories": ["Productivity"],
+  "activities": [
+    {
+      "entrypoint": "pomodoro.py",
+      "classname": "Pomodoro",
+      "intent_filters": [
+        {
+          "action": "main",
+          "category": "launcher"
+        }
+      ]
+    }
+  ]
+}
