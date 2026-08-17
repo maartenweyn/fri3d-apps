@@ -247,9 +247,9 @@ class Pomodoro(Activity):
         self.time_text = "--:--"
         self._shown = -1
         self._dots = None
-        self._flash_until = 0
+        self._flashing_since = None
         self._led_state = None
-        self._led_last = 0
+        self._led_last = None
         self._led_count = None
         self._ticking = False
         self._durations = None
@@ -263,7 +263,7 @@ class Pomodoro(Activity):
         # action you reach for most: start and pause.
         self._start_pin = _find_start_button()
         self._start_was_down = False
-        self._start_last = 0
+        self._start_last = None
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -540,7 +540,8 @@ class Pomodoro(Activity):
             self._start_pin = None
             return
         if down and not self._start_was_down:
-            if time.ticks_diff(now, self._start_last) > START_DEBOUNCE_MS:
+            if (self._start_last is None
+                    or time.ticks_diff(now, self._start_last) > START_DEBOUNCE_MS):
                 self._start_last = now
                 self._start_was_down = True
                 self._toggle()
@@ -573,7 +574,7 @@ class Pomodoro(Activity):
             else:
                 self._play(CHIME_END_LONG)
         if self.cfg["leds"]:
-            self._flash_until = time.ticks_add(time.ticks_ms(), FLASH_MS)
+            self._flashing_since = time.ticks_ms()
 
     def _buzzer(self):
         """The badge buzzer, not the headset, which is the default output."""
@@ -631,11 +632,15 @@ class Pomodoro(Activity):
         count = self._leds_n()
         off = (0, 0, 0)
 
-        if time.ticks_diff(self._flash_until, now) > 0:
-            # Brighter than the steady glow so it registers, but still scaled by
-            # the brightness setting: this is a desk lamp, not a strobe.
-            lit = (now // FLASH_PERIOD_MS) % 2 == 0
-            return [self._dim(LED_RGB[self.phase], 4.0) if lit else off] * count
+        if self._flashing_since is not None:
+            if time.ticks_diff(now, self._flashing_since) >= FLASH_MS:
+                self._flashing_since = None
+            else:
+                # Brighter than the steady glow so it registers, but still
+                # scaled by the brightness setting: a desk lamp, not a strobe.
+                elapsed = time.ticks_diff(now, self._flashing_since)
+                lit = (elapsed // FLASH_PERIOD_MS) % 2 == 0
+                return [self._dim(LED_RGB[self.phase], 4.0) if lit else off] * count
 
         if self.running:
             total = self._phase_ms()
@@ -680,7 +685,8 @@ class Pomodoro(Activity):
             if self._led_state is not None:
                 self._leds_clear()
             return
-        if self._led_state is not None and time.ticks_diff(now, self._led_last) < LED_INTERVAL_MS:
+        if (self._led_state is not None and self._led_last is not None
+                and time.ticks_diff(now, self._led_last) < LED_INTERVAL_MS):
             return
         self._led_last = now
 
@@ -696,7 +702,7 @@ class Pomodoro(Activity):
             print("pomodoro: LED update failed:", exc)
 
     def _leds_clear(self):
-        self._flash_until = 0
+        self._flashing_since = None
         self._led_state = None
         if self._leds_ok():
             try:

@@ -133,3 +133,21 @@ the board wiring. On the Fri3d 2026:
   ENTER 10, ESC 27, HOME 2, END 3, NEXT 9, PREV 11, BACKSPACE 8, DEL 127.
 - The board module is frozen into the firmware, so there is no source file on
   flash to read. Inspect it with `dir()` over the REPL instead.
+
+## Two traps when testing against a live badge
+
+`time.ticks_ms()` wraps at 2**30 and `ticks_diff(a, b)` returns a signed value
+inside half a period. `ticks_diff(0, now)` is therefore *positive* once the
+badge has been up for about nine days, or immediately after a wrap. Never
+compare a tick value against a zero sentinel: use `None` and measure elapsed
+time forwards. Desktop tests only catch this if their shims are modular too.
+
+Two things make REPL experiments lie:
+
+- Imports are cached in `sys.modules`, and the badge is not rebooted between
+  `mpremote exec` calls. After reinstalling an app, `sys.modules.pop("yourapp")`
+  or you are testing the previous version.
+- `Activity.setContentView()` hands the activity to the framework, which starts
+  ticking it. Statements in the REPL are interleaved with the asyncio loop, so
+  an object you are poking at mutates underneath you. Call whatever unregisters
+  your frame callback before measuring anything.

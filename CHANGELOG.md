@@ -2,6 +2,22 @@
 
 ## Pomodoro
 
+### 0.3.1
+
+Fixed the LEDs flashing at random and showing the wrong phase colour on a
+badge that had been running for a while.
+
+`time.ticks_ms()` is modular, not a plain counter, and `ticks_diff` returns a
+signed value within half a period. Comparing against a zero sentinel therefore
+flips sign once the device has been up past that halfway point, which made the
+phase-change flash trigger on its own. Three places did this: the flash
+deadline, the LED update throttle and the button debounce. All three now use
+`None` and measure elapsed time forwards.
+
+The test stubs implement the same modular arithmetic and the suite runs at four
+clock positions, including just under the wrap, so this class of bug fails on a
+desktop instead of only on hardware.
+
 ### 0.3.0
 
 The badge's S button starts and pauses the timer. It works wherever the focus

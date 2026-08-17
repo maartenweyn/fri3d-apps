@@ -18,10 +18,33 @@ sys.path.insert(0, os.path.join(HERE, "stubs"))
 sys.path.insert(0, os.path.join(ROOT, "be.fri3d.pomodoro"))
 
 # --- MicroPython time shims -------------------------------------------------
-CLOCK = {"ms": 1_000_000}
-time.ticks_ms = lambda: CLOCK["ms"]
-time.ticks_diff = lambda a, b: a - b
-time.ticks_add = lambda a, b: a + b
+# ticks_* are modular, not plain integers. ticks_diff returns a signed value
+# inside half a period, so comparing against a zero sentinel gives a positive
+# answer once the device has been up for a while. Start the clock past the
+# halfway point so tests see the same arithmetic a real badge does.
+TICKS_PERIOD = 1 << 30
+TICKS_HALF = TICKS_PERIOD >> 1
+# Overridable so the suite can be run on both sides of the tick wrap:
+#   POMODORO_TEST_CLOCK=1000 python3 tests/test_pomodoro.py
+CLOCK = {"ms": int(os.environ.get("POMODORO_TEST_CLOCK", 900_000_000))}
+
+
+def _ticks_ms():
+    return CLOCK["ms"] & (TICKS_PERIOD - 1)
+
+
+def _ticks_diff(a, b):
+    delta = (a - b) & (TICKS_PERIOD - 1)
+    return delta - TICKS_PERIOD if delta >= TICKS_HALF else delta
+
+
+def _ticks_add(a, b):
+    return (a + b) & (TICKS_PERIOD - 1)
+
+
+time.ticks_ms = _ticks_ms
+time.ticks_diff = _ticks_diff
+time.ticks_add = _ticks_add
 time.sleep_ms = lambda ms: None
 
 import mpos
