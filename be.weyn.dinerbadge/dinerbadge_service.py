@@ -5,6 +5,10 @@ matter which app is on screen. On a message it posts a Notification (the system
 plays the notification chime on the buzzer), blinks the LEDs until someone
 acknowledges, and pulls the Berichtjes activity to the foreground.
 
+It also reports the badge's own health, battery and WiFi signal, and announces
+those to Home Assistant through MQTT discovery, so the sensors appear without
+anybody editing YAML for them.
+
 The activity reads this module's globals directly. Service and activity live in
 the same MicroPython process, so a plain `import` is the whole IPC story.
 
@@ -16,6 +20,7 @@ config file only supplies starting values for a badge nobody has set up yet.
 Nothing here creates LVGL objects: a Service has no screen.
 """
 
+import json
 import time
 
 # --- mpos imports, defensively ---------------------------------------------
@@ -61,6 +66,9 @@ MQTT_PASS = None
 LED_ALERT = True
 ACK_TIMEOUT_MIN = 30
 TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
+# Where Home Assistant listens for discovery. "homeassistant" is the default and
+# almost nobody changes it; the ones who did know they did.
+DISCOVERY_PREFIX = "homeassistant"
 CONFIG_OK = False
 
 try:
@@ -73,12 +81,15 @@ try:
     LED_ALERT = getattr(_cfg, "LED_ALERT", True)
     ACK_TIMEOUT_MIN = getattr(_cfg, "ACK_TIMEOUT_MIN", ACK_TIMEOUT_MIN)
     TIMEZONE = getattr(_cfg, "TIMEZONE", TIMEZONE)
+    DISCOVERY_PREFIX = getattr(_cfg, "DISCOVERY_PREFIX", DISCOVERY_PREFIX)
     CONFIG_OK = True
 except ImportError:
     print("dinerbadge: no dinerbadge_config.py, using defaults")
 
 TOPIC_MSG = ""
 TOPIC_ACK = ""
+TOPIC_STATE = ""         # retained JSON: battery, voltage, signal strength
+TOPIC_STATUS = ""        # retained online/offline, also the MQTT last will
 CLIENT_ID = ""
 
 # Backoff between connection attempts, seconds. A child's badge spends plenty
@@ -90,6 +101,11 @@ PING_EVERY = 20          # keepalive is 60s; ping well inside that
 SOCKET_TIMEOUT = 5       # never let a dead broker block the LVGL thread
 TICK = 0.5               # loop period, also the LED blink half-period
 
+# How often the badge reports its battery. A lanyard badge discharges over
+# hours; reading it every few seconds would only add radio traffic and noise on
+# a graph. The ADC behind it is cached for 30 seconds anyway.
+STATE_EVERY = 300
+
 # --- shared state, read by the activity ------------------------------------
 last_message = None
 last_message_seq = 0     # increments per message, so the same text twice is
@@ -100,6 +116,9 @@ connected = False
 last_error = None
 leds_lit = False         # what the LEDs are doing, so the tests can see it
 pending_ack = None       # an acknowledgement the link was not up for
+battery_pct = None       # last reading, as published
+battery_volt = None
+wifi_rssi = None
 
 _service = None
 
@@ -214,7 +233,8 @@ def set_child_name(name):
     a client stays subscribed to what it asked for, and nothing would arrive on
     the new topic until it resubscribes.
     """
-    global CHILD_NAME, TOPIC_MSG, TOPIC_ACK, CLIENT_ID
+    global CHILD_NAME, TOPIC_MSG, TOPIC_ACK, TOPIC_STATE, TOPIC_STATUS
+    global CLIENT_ID
     name = normalize_name(name)
     if not name:
         return False
@@ -222,6 +242,8 @@ def set_child_name(name):
     CHILD_NAME = name
     TOPIC_MSG = "home/badges/%s/msg" % name
     TOPIC_ACK = "home/badges/%s/ack" % name
+    TOPIC_STATE = "home/badges/%s/state" % name
+    TOPIC_STATUS = "home/badges/%s/status" % name
     # The name is in there for whoever reads the broker log; the suffix is
     # what makes it unique.
     CLIENT_ID = "badge_%s_%s" % (name, DEVICE_SUFFIX)
@@ -316,6 +338,96 @@ def clock_text(epoch):
     if parts[0] < 2024:          # clock never synced, do not invent a time
         return ""
     return "%02d:%02d" % (parts[3], parts[4])
+
+
+# --- telemetry -------------------------------------------------------------
+
+def os_release():
+    """The MicroPythonOS version, for the device page in Home Assistant."""
+    try:
+        import mpos
+        return str(mpos.BuildInfo.version.release)
+    except Exception:
+        return None
+
+
+def battery_reading():
+    """Battery, voltage and signal strength, as far as this badge can tell.
+
+    Every field is optional and missing is not an error: a badge running off
+    USB with no cell in it, or a firmware without the ADC wired up, should still
+    report the signal strength it does know rather than nothing at all.
+    """
+    state = {}
+    try:
+        import mpos
+        manager = mpos.BatteryManager
+        if manager.has_battery():
+            percentage = manager.get_battery_percentage()
+            if percentage is not None:
+                state["battery"] = int(round(percentage))
+            volt = manager.read_battery_voltage()
+            if volt:
+                state["voltage"] = round(volt, 2)
+    except Exception as e:
+        print("dinerbadge: no battery reading:", e)
+    try:
+        import network
+        state["rssi"] = network.WLAN(network.STA_IF).status("rssi")
+    except Exception:
+        pass
+    return state
+
+
+# key, name in Home Assistant, device class, unit, decimals
+TELEMETRY = (
+    ("battery", "Battery", "battery", "%", 0),
+    ("voltage", "Battery voltage", "voltage", "V", 2),
+    ("rssi", "WiFi signal", "signal_strength", "dBm", 0),
+)
+
+
+def discovery_payloads():
+    """The MQTT discovery messages that make Home Assistant create the sensors.
+
+    Keyed on the badge's MAC, not on its name, so renaming a badge updates the
+    entities that already exist rather than leaving a second set of dead ones
+    behind. Home Assistant keeps the history that way too.
+
+    The short keys are not an accident: this is the abbreviated form of the
+    discovery schema, and these payloads go over a radio in a bedroom.
+    """
+    device = {
+        "ids": ["fri3d_badge_%s" % DEVICE_SUFFIX],
+        "name": "Badge %s" % titlecase(CHILD_NAME),
+        "mf": "Fri3d Camp",
+        "mdl": "Fri3d 2026 badge",
+    }
+    release = os_release()
+    if release:
+        device["sw"] = release
+
+    out = []
+    for key, name, device_class, unit, decimals in TELEMETRY:
+        out.append((
+            "%s/sensor/badge_%s/%s/config" % (DISCOVERY_PREFIX, DEVICE_SUFFIX,
+                                              key),
+            {
+                "name": name,
+                "uniq_id": "fri3d_badge_%s_%s" % (DEVICE_SUFFIX, key),
+                "obj_id": "badge_%s_%s" % (CHILD_NAME, key),
+                "stat_t": TOPIC_STATE,
+                "avty_t": TOPIC_STATUS,
+                "val_tpl": "{{ value_json.%s }}" % key,
+                "dev_cla": device_class,
+                "stat_cla": "measurement",
+                "unit_of_meas": unit,
+                "sug_dsp_prc": decimals,
+                "ent_cat": "diagnostic",
+                "dev": device,
+            },
+        ))
+    return out
 
 
 def has_unacked():
@@ -431,6 +543,8 @@ class DinerBadgeService(Service):
         self._next_try = 0
         self._backoff = RETRY_MIN
         self._last_ping = 0
+        self._next_state = 0
+        self._live_name = None    # the name we last published under
 
     def onCreate(self):
         global _service
@@ -462,12 +576,16 @@ class DinerBadgeService(Service):
 
     def onDestroy(self):
         self._running = False
+        # A clean disconnect does not fire the last will, so the badge would
+        # stay "online" in Home Assistant until the next reboot. Say so here.
+        self._publish(TOPIC_STATUS, "offline")
         self._close()
         _leds_off()
 
     def resubscribe(self):
         """Drop the connection so the loop reconnects on the new topic."""
         print("dinerbadge: name changed, resubscribing as", CHILD_NAME)
+        self._retire_topics()
         self._close()
         self._backoff = RETRY_MIN
         self._next_try = 0
@@ -498,6 +616,8 @@ class DinerBadgeService(Service):
             if now - self._last_ping >= PING_EVERY:
                 self._mqtt.ping()
                 self._last_ping = now
+            if now >= self._next_state:
+                self._publish_state(now)
         except Exception as e:
             print("dinerbadge: connection lost:", e)
             self._fail(e, now)
@@ -534,6 +654,14 @@ class DinerBadgeService(Service):
                     user=MQTT_USER, password=MQTT_PASS, keepalive=60,
                 )
             client.set_callback(self._on_message)
+            # Registered with the broker before connecting, so a badge that
+            # walks out of range or runs flat is marked offline by the broker
+            # rather than sitting there showing its last battery reading
+            # forever.
+            try:
+                client.set_last_will(TOPIC_STATUS, "offline", retain=True)
+            except Exception as e:
+                print("dinerbadge: no last will:", e)
             client.connect()
             client.subscribe(TOPIC_MSG)
             self._mqtt = client
@@ -543,6 +671,7 @@ class DinerBadgeService(Service):
             last_error = None
             print("dinerbadge: subscribed to", TOPIC_MSG)
             self._flush_ack()
+            self._announce(now)
         except Exception as e:
             self._fail(e, now)
 
@@ -603,6 +732,69 @@ class DinerBadgeService(Service):
             print("dinerbadge: start_app failed:", e)
 
     # --- outgoing ----------------------------------------------------------
+
+    def _publish(self, topic, payload, retain=True):
+        """One retained publish, with a dict turned into JSON on the way out."""
+        if self._mqtt is None or not topic:
+            return False
+        if isinstance(payload, dict):
+            payload = json.dumps(payload)
+        try:
+            self._mqtt.publish(topic, payload, retain=retain)
+            return True
+        except Exception as e:
+            print("dinerbadge: publish to %s failed:" % topic, e)
+            self._fail(e, time.time())
+            return False
+
+    def _announce(self, now):
+        """Say what this badge is, and that it is here.
+
+        All of it retained, so a Home Assistant that restarts tomorrow morning
+        gets the sensors and their last values from the broker without the badge
+        having to be awake for it. Republished on every reconnect, which is also
+        how a renamed badge points its existing entities at the new topic.
+        """
+        self._live_name = CHILD_NAME
+        if not self._publish(TOPIC_STATUS, "online"):
+            return
+        for topic, config in discovery_payloads():
+            if not self._publish(topic, config):
+                return
+        self._publish_state(now)
+
+    def _publish_state(self, now):
+        global battery_pct, battery_volt, wifi_rssi
+        self._next_state = now + STATE_EVERY
+        state = battery_reading()
+        battery_pct = state.get("battery")
+        battery_volt = state.get("voltage")
+        wifi_rssi = state.get("rssi")
+        if not state:
+            return False           # nothing measurable; do not publish {}
+        state["name"] = CHILD_NAME
+        return self._publish(TOPIC_STATE, state)
+
+    def _retire_topics(self):
+        """Clear what we published under the name we are leaving behind.
+
+        Retained messages outlive the client that sent them. Without this, a
+        badge renamed from alice to bob leaves a retained battery reading on
+        alice's topic that nothing will ever update and nothing will ever clear.
+        An empty payload is how MQTT deletes one.
+        """
+        old = self._live_name
+        self._live_name = None
+        if not old or old == CHILD_NAME or self._mqtt is None:
+            return
+        print("dinerbadge: clearing the retained state of", old)
+        for suffix in ("state", "status"):
+            try:
+                self._mqtt.publish("home/badges/%s/%s" % (old, suffix), "",
+                                   retain=True)
+            except Exception as e:
+                print("dinerbadge: could not clear %s:" % suffix, e)
+                return
 
     def _flush_ack(self):
         """Send what the last outage swallowed, now that there is a link."""

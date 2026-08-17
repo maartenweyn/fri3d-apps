@@ -2,6 +2,37 @@
 
 ## Berichtjes
 
+### 0.4.0
+
+The badge reports its own battery, and says so to Home Assistant itself.
+
+Charge, voltage and WiFi signal go out every five minutes as one retained JSON
+message on `home/badges/<name>/state`. The badge also publishes MQTT discovery
+for the three sensors, so they appear under Settings, Devices as a Fri3d 2026
+badge with no YAML written for them.
+
+Discovery is keyed on the MAC rather than the name. Keying it on the name would
+strand the old entity on every rename and start a new one from zero, which is
+exactly the mistake the client id already taught us. Renaming a badge now
+rewrites the existing config, clears the retained state left behind on the old
+topic, and keeps the history.
+
+Availability is a real last will, registered before connecting: a badge that
+runs flat or walks out of range is marked unavailable by the broker rather than
+showing yesterday's battery percentage forever. A clean shutdown publishes
+`offline` itself, since the broker does not send a will for one.
+
+Every telemetry field is optional. A badge on USB with no cell in it still
+reports its signal strength, an ADC that raises does not stop a message from
+arriving, and a badge that can measure nothing publishes nothing rather than an
+empty object.
+
+345 offline checks, including a fake ADC that is missing, broken, or fine.
+Verified against the real Home Assistant: the three sensors appeared by
+themselves, reading 100%, 4.20 V and -54 dBm.
+
+Also: the README and the setup guide now have screenshots.
+
 ### 0.3.1
 
 Fixed a connection that fell over every few seconds, which looked exactly like

@@ -125,6 +125,22 @@ def fresh_service():
     return svc
 
 
+def acks():
+    """Only the acknowledgements, out of everything the badge publishes.
+
+    A connected badge also announces itself and reports its battery, and an
+    assertion on the whole list would be an assertion about that too.
+    """
+    return [(topic, payload) for topic, payload in BROKER.published
+            if topic.endswith("/ack")]
+
+
+def configs():
+    """The discovery messages, keyed by topic."""
+    return dict((topic, payload) for topic, payload in BROKER.published
+                if topic.startswith("homeassistant/"))
+
+
 # ===========================================================================
 # Service: topics and configuration
 # ===========================================================================
@@ -237,14 +253,14 @@ svc._pump()
 sent = service.publish_ack()
 
 equal("ack was published", sent, True)
-equal("ack went to the ack topic", BROKER.published,
+equal("ack went to the ack topic", acks(),
       [("home/badges/alice/ack", "Je bent de vaat vergeten")])
 equal("sequence marked acknowledged", service.acked_seq, 1)
 check("nothing outstanding", not service.has_unacked())
 equal("LEDs cleared on acknowledgement", LightsManager.lit(), 0)
 
 service.publish_ack()
-equal("acknowledging twice does not publish twice", len(BROKER.published), 1)
+equal("acknowledging twice does not publish twice", len(acks()), 1)
 
 svc = fresh_service()
 BROKER.deliver(service.TOPIC_MSG, "Kom eens")
@@ -266,7 +282,7 @@ for _ in range(70):
     if service.connected:
         break
 equal("reconnected", service.connected, True)
-equal("and the held ack went out", BROKER.published,
+equal("and the held ack went out", acks(),
       [("home/badges/alice/ack", "Kom eens")])
 check("nothing left pending", service.pending_ack is None)
 
@@ -274,7 +290,135 @@ check("nothing left pending", service.pending_ack is None)
 BROKER.published[:] = []
 Clock.advance(1)
 svc._pump()
-equal("and not again on the next tick", BROKER.published, [])
+equal("and not again on the next tick", acks(), [])
+
+
+# ===========================================================================
+# Service: battery and discovery
+# ===========================================================================
+
+import json                                            # noqa: E402
+
+mpos.BatteryManager.reset()
+network.STATE["rssi"] = -54
+svc = fresh_service()
+
+state = BROKER.retained.get("home/badges/alice/state")
+check("a state message was published and retained", state is not None)
+reading = json.loads(state)
+equal("battery is a whole percentage", reading["battery"], 87)
+equal("voltage is rounded to two decimals", reading["voltage"], 3.92)
+equal("signal strength is reported", reading["rssi"], -54)
+equal("the name travels with it, for whoever reads the broker",
+      reading["name"], "alice")
+equal("and the module holds the same reading", service.battery_pct, 87)
+
+equal("the badge announces itself as online",
+      BROKER.retained.get("home/badges/alice/status"), "online")
+equal("with a last will registered before connecting, so a badge that runs "
+      "flat goes offline by itself",
+      BROKER.will, ("home/badges/alice/status", "offline", True))
+
+published = configs()
+equal("one discovery message per sensor", len(published), 3)
+battery = json.loads(published[
+    "homeassistant/sensor/badge_%s/battery/config" % service.DEVICE_SUFFIX])
+equal("battery reads as a battery in Home Assistant",
+      battery["dev_cla"], "battery")
+equal("with a unit", battery["unit_of_meas"], "%")
+equal("pointed at the state topic", battery["stat_t"], "home/badges/alice/state")
+equal("and at the availability topic", battery["avty_t"],
+      "home/badges/alice/status")
+equal("reading the right field", battery["val_tpl"], "{{ value_json.battery }}")
+
+# The unique id decides whether Home Assistant keeps the history across a
+# rename. Keyed on the MAC, it does; keyed on the name, every rename would
+# strand the old entity and start a new one from zero.
+check("unique id is per device, not per name",
+      service.DEVICE_SUFFIX in battery["uniq_id"]
+      and "alice" not in battery["uniq_id"])
+equal("all three sensors belong to one device",
+      len(set(json.dumps(json.loads(cfg)["dev"], sort_keys=True)
+              for cfg in published.values())), 1)
+equal("the device carries the OS version", battery["dev"]["sw"], "0.16.1")
+equal("and is named after the badge", battery["dev"]["name"], "Badge Alice")
+
+# Reporting every tick would put a sawtooth on the graph and traffic on the
+# radio for a reading that moves over hours.
+BROKER.published[:] = []
+Clock.advance(10)
+svc._pump()
+equal("no second reading a moment later",
+      [t for t, _ in BROKER.published if t.endswith("/state")], [])
+Clock.advance(service.STATE_EVERY)
+svc._pump()
+equal("but one after the interval",
+      [t for t, _ in BROKER.published if t.endswith("/state")],
+      ["home/badges/alice/state"])
+
+# A badge running off USB with no cell in it still knows its signal strength,
+# and a badge that cannot read either must not publish an empty object.
+svc = fresh_service()
+mpos.BatteryManager.present = False
+BROKER.published[:] = []
+Clock.advance(service.STATE_EVERY)
+svc._pump()
+reading = json.loads(BROKER.retained["home/badges/alice/state"])
+check("no battery fields without a battery", "battery" not in reading)
+equal("but the signal strength still goes out", reading["rssi"], -54)
+
+network.STATE["rssi"] = None
+BROKER.published[:] = []
+Clock.advance(service.STATE_EVERY)
+svc._pump()
+equal("nothing measurable, nothing published",
+      [t for t, _ in BROKER.published if t.endswith("/state")], [])
+mpos.BatteryManager.reset()
+network.STATE["rssi"] = -54
+
+# An ADC that raises is a real failure mode, and a message must still arrive
+# when the battery cannot be read at all.
+class _BrokenBattery:
+    @staticmethod
+    def has_battery():
+        raise OSError("adc gone")
+
+svc = fresh_service()
+_saved = mpos.BatteryManager
+mpos.BatteryManager = _BrokenBattery
+try:
+    Clock.advance(service.STATE_EVERY)
+    svc._pump()
+    BROKER.deliver(service.TOPIC_MSG, "Eten")
+    svc._pump()
+    equal("a broken battery does not stop a message",
+          service.last_message, "Eten")
+finally:
+    mpos.BatteryManager = _saved
+
+# Renaming a badge leaves a retained reading behind on the old topic, which
+# nothing will ever update and nothing will ever clear. An empty payload is how
+# MQTT deletes one.
+svc = fresh_service()
+service.set_child_name("bob")
+equal("the old state was cleared", BROKER.retained["home/badges/alice/state"], "")
+equal("and the old availability too",
+      BROKER.retained["home/badges/alice/status"], "")
+for _ in range(70):
+    Clock.advance(1)
+    svc._pump()
+    if service.connected:
+        break
+equal("reconnected under the new name", service.connected, True)
+equal("and announced there", BROKER.retained.get("home/badges/bob/status"),
+      "online")
+renamed = json.loads(configs()[
+    "homeassistant/sensor/badge_%s/battery/config" % service.DEVICE_SUFFIX])
+equal("the discovery config now points at the new topic",
+      renamed["stat_t"], "home/badges/bob/state")
+equal("but it is still the same entity", renamed["uniq_id"],
+      battery["uniq_id"])
+service.set_child_name("alice")
 
 
 # ===========================================================================
@@ -875,13 +1019,13 @@ equal("flagged as new", app.status_label.text, "Nieuw bericht!")
 check("button enabled", not app.ack_btn.has_state(lv.STATE.DISABLED))
 
 app.ack_btn.click()
-equal("tapping publishes the ack", BROKER.published,
+equal("tapping publishes the ack", acks(),
       [("home/badges/alice/ack", "Eten over 10 minuten")])
 equal("screen confirms", app.status_label.text, "Bevestigd")
 check("button disabled again", app.ack_btn.has_state(lv.STATE.DISABLED))
 
 app.ack_btn.click()
-equal("a second tap changes nothing", len(BROKER.published), 1)
+equal("a second tap changes nothing", len(acks()), 1)
 
 # Same text again: the child must be alerted a second time and the button must
 # come back, which is the screen-side half of the sequence-not-text rule.

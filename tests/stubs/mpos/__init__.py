@@ -160,6 +160,46 @@ class TaskManager:
         return 8192
 
 
+class BatteryManager:
+    """Stub of the ADC behind the battery, driven by the tests.
+
+    `present = False` is the badge on USB with no cell in it, and
+    `percentage = None` is the reading the real one returns before the ADC has
+    settled. Both have to leave the service publishing rather than crashing.
+    """
+
+    present = True
+    percentage = 87.4
+    voltage = 3.916
+
+    @classmethod
+    def reset(cls):
+        cls.present = True
+        cls.percentage = 87.4
+        cls.voltage = 3.916
+
+    @classmethod
+    def has_battery(cls):
+        return cls.present
+
+    @classmethod
+    def get_battery_percentage(cls):
+        return cls.percentage
+
+    @classmethod
+    def read_battery_voltage(cls):
+        return cls.voltage
+
+
+class _Version:
+    release = "0.16.1"
+    api_level = 0
+
+
+class BuildInfo:
+    version = _Version
+
+
 class _Player:
     def __init__(self, rtttl):
         self.rtttl = rtttl

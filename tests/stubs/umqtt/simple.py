@@ -20,6 +20,8 @@ class BROKER:
     accept_auth = True
     inbox = []          # messages waiting to be delivered to the client
     published = []      # (topic, payload) the client sent
+    retained = {}       # topic -> last retained payload, "" meaning cleared
+    will = None         # (topic, payload, retain) registered before connect
     subscriptions = []
     attempts = 0        # every connect() call, successful or not
     connects = 0        # only the ones that got through
@@ -32,6 +34,8 @@ class BROKER:
         cls.accept_auth = True
         cls.inbox = []
         cls.published = []
+        cls.retained = {}
+        cls.will = None
         cls.subscriptions = []
         cls.attempts = 0
         cls.connects = 0
@@ -81,9 +85,17 @@ class MQTTClient:
         self._require_link()
         BROKER.subscriptions.append(topic)
 
+    def set_last_will(self, topic, msg, retain=False, qos=0):
+        if self.connected:
+            # The real one refuses too: the will travels inside CONNECT.
+            raise ValueError("set_last_will after connect")
+        BROKER.will = (topic, msg, retain)
+
     def publish(self, topic, msg, retain=False, qos=0):
         self._require_link()
         BROKER.published.append((topic, msg))
+        if retain:
+            BROKER.retained[topic] = msg
 
     def ping(self):
         self._require_link()

@@ -2,9 +2,9 @@
   "name": "Berichtjes",
   "publisher": "Maarten Weyn",
   "short_description": "Messages from Home Assistant, with an acknowledge button",
-  "long_description": "Shows short messages sent from Home Assistant over MQTT and sends a confirmation back when the child taps Ontvangen. A background service keeps listening whatever else is on screen, chimes on the buzzer, lights the LEDs and pulls this screen to the front.",
+  "long_description": "Shows short messages sent from Home Assistant over MQTT and sends a confirmation back when the child taps Ontvangen. A background service keeps listening whatever else is on screen, chimes on the buzzer, lights the LEDs and pulls this screen to the front. It also reports the badge's battery and signal strength to Home Assistant, which picks the sensors up by itself.",
   "fullname": "be.weyn.dinerbadge",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "categories": [
     "Communication"
   ],

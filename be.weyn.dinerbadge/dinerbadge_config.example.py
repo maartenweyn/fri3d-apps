@@ -42,3 +42,9 @@ ACK_TIMEOUT_MIN = 30
 # the badge itself is set to wins. The string carries the DST rules, so it
 # stays right across the autumn change. Central European time shown here.
 TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
+
+# Where Home Assistant listens for MQTT discovery, which is how the badge's
+# battery and signal-strength sensors appear without anyone writing YAML for
+# them. "homeassistant" is the default and almost nobody changes it; if you did,
+# it is in the MQTT integration's own settings.
+DISCOVERY_PREFIX = "homeassistant"

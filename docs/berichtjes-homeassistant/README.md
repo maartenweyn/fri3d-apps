@@ -42,6 +42,8 @@ button, in Verbinding.
 Everything is typed on the badge itself, behind the gear button at the bottom
 left. No file to edit, so every badge runs an identical copy of the app.
 
+<img src="../images/berichtjes-instellingen.png" alt="The badge's settings screen: Deze badge, Verbinding, LEDs knipperen and Stop na 30 min" width="360">
+
 - **Deze badge** — the name. It goes straight into the MQTT topic, so the badge
   lowercases it and strips anything a topic cannot carry. Give each badge its
   own name and write down what you chose; Home Assistant needs the same.
@@ -56,6 +58,8 @@ is the point of it: type an address, go back, come in again, and it either says
 
     home/badges/<name>/msg      Home Assistant publishes, the badge listens
     home/badges/<name>/ack      the badge publishes when the button is tapped
+    home/badges/<name>/state    battery, voltage and signal strength, retained
+    home/badges/<name>/status   online or offline, retained, also the last will
 
 ## 3. Paste the Home Assistant side
 
@@ -103,6 +107,37 @@ should read `confirmed`, with the other badges untouched at `neutral`.
 If the message never arrives, publish to the topic directly from Developer
 tools, Actions, `mqtt.publish` with topic `home/badges/alice/msg`. That separates
 "the script is wrong" from "the badge is not listening".
+
+<img src="../images/ha-dashboard.png" alt="Three dashboard rows: Both grey, Alice red and waiting, Bob green and confirmed" width="600">
+
+## The battery, without writing anything
+
+The badge announces itself over
+[MQTT discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery),
+so it turns up under Settings, Devices as a Fri3d 2026 badge with three
+diagnostic sensors. There is no YAML for this part and nothing to rename.
+
+<img src="../images/ha-device.png" alt="The badge's device page in Home Assistant with battery, battery voltage and WiFi signal" width="600">
+
+| Sensor | Reads |
+| --- | --- |
+| Battery | percentage, every five minutes |
+| Battery voltage | what the percentage is derived from, which is the honest number when the curve looks wrong |
+| WiFi signal | dBm, useful when a badge in a far bedroom keeps dropping |
+
+The state is retained, so Home Assistant has the last reading straight after a
+restart without waiting for the badge to say anything. Availability is a last
+will registered with the broker: a badge that runs flat or walks out of range
+goes unavailable rather than showing a battery percentage from yesterday.
+
+The entities are keyed on the badge's MAC, not on its name, so renaming a badge
+updates what already exists and keeps the history. Its `entity_id` keeps the old
+name though, because Home Assistant never renames those for you: rename them
+yourself under Settings, Entities if that bothers you.
+
+If nothing appears, discovery is off or on a different prefix. It is on by
+default; the setting lives in the MQTT integration's own options, and
+`DISCOVERY_PREFIX` in `dinerbadge_config.py` has to match it.
 
 ## How the status works
 

@@ -13,6 +13,8 @@ Everything here is developed and tested against the **Fri3d 2026 badge**
 A focus timer on your badge. Work, break, work, break, and a longer break every
 fourth round.
 
+<img src="docs/images/pomodoro.png" alt="The Pomodoro timer on the badge, red digits reading 25:00 above Round 1/4" width="420">
+
 Built for a badge sitting on a desk, which shapes most of the design.
 
 - **A countdown you can read from across the room.** Seven-segment digits drawn
@@ -64,6 +66,11 @@ shows the message. They tap once, and the dashboard turns green so you know it
 landed. Built because "dinner in ten minutes" shouted from the hallway has a
 delivery rate somewhere around 40 percent.
 
+<p>
+<img src="docs/images/berichtjes-bericht.png" alt="A message on the badge: Eten binnen 10 minuten, sent at 21:21, with an Ontvangen button" width="360">
+<img src="docs/images/berichtjes-instellingen.png" alt="The settings screen: this badge's name, connection, LED blinking, and the timeout" width="360">
+</p>
+
 The on-screen text is Dutch (`Geen berichten`, `Nieuw bericht!`, `Ontvangen!`,
 `gestuurd om 18:42`). Everything else, including the Home Assistant examples, is
 in English. Changing the four strings in `dinerbadge.py` is a five minute job if
@@ -104,6 +111,11 @@ minutes, most of it pasting YAML.
   behind the gear button and stored in SharedPreferences, so every badge runs an
   identical copy of the app and no password has to live in a file. The password
   is never displayed.
+- **Reports its own battery.** Charge, voltage and signal strength every five
+  minutes, and the badge announces those sensors to Home Assistant itself, so
+  there is no YAML to write for them. A badge that walks out of range or runs
+  flat is marked unavailable by the broker rather than showing its last reading
+  forever.
 
 #### On the dashboard
 
@@ -113,10 +125,28 @@ running, red the moment you send, green when the child answers, and grey again
 after half an hour. Send to everyone and every row turns red, each going green
 on its own.
 
+<img src="docs/images/ha-dashboard.png" alt="Three dashboard rows: Both grey, Alice red and waiting, Bob green and confirmed, each with five message buttons" width="600">
+
+Above: Alice has been sent something and has not answered; Bob has. The rows and
+the colours come from
+[docs/berichtjes-homeassistant/](docs/berichtjes-homeassistant/) as YAML you can
+paste.
+
 That status is a template sensor rather than an automation: a template
 containing `now()` is re-rendered every minute, so the fall back to grey happens
 by itself, with no timer to survive a restart and nothing arriving on your phone
 at dinner time.
+
+#### The badge as a device
+
+The badge publishes MQTT discovery for its own health, so Home Assistant creates
+the sensors without you writing anything:
+
+<img src="docs/images/ha-device.png" alt="The badge's device page in Home Assistant, showing Fri3d 2026 badge with battery, battery voltage and WiFi signal" width="600">
+
+The discovery is keyed on the badge's MAC rather than its name, so renaming a
+badge updates the entities that already exist instead of stranding them and
+starting a second set from zero.
 
 ## Installing an app
 
@@ -170,7 +200,7 @@ that does not exist on this build, and that is what surfaces them.
 The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
 
     python3 tests/test_pomodoro.py      # 66 checks
-    python3 tests/test_dinerbadge.py    # 331 checks
+    python3 tests/test_dinerbadge.py    # 345 checks
 
 Pomodoro: the phase cycle, pause and resume timing, the day rollover, clamping
 in the settings screen, LED cleanup on exit, that the LED hourglass only ever
@@ -179,7 +209,8 @@ buzzer rather than the headset.
 
 Berichtjes: a fake broker that drops the link the way a real one does, so the
 backoff, the keepalive, a refused login and a held acknowledgement are all
-exercised without hardware. Plus the settings screens, down to the size of the
+exercised without hardware. A fake ADC that is missing, broken, or fine, since
+each of those has to leave a message arriving. Plus the settings screens, down to the size of the
 tap targets, because sending a CLICKED event proves the callback works and says
 nothing about whether a finger can reach it.
 
@@ -232,6 +263,7 @@ trusting a documented import path.
     tests/                 lvgl and mpos stubs, offline tests
     docs/                  notes on MicroPythonOS and this badge,
                            plus the Home Assistant side of Berichtjes
+    docs/images/           the screenshots used above
     dist/                  built .mpk files, not tracked
 
 Most badge apps live in their own repository, one app each. This one keeps the
