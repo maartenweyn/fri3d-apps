@@ -1,0 +1,25 @@
+# Goes into: your MQTT configuration, normally mqtt.yaml
+#
+# WATCH OUT: mqtt.yaml usually already has a top-level sensor: key with other
+# sensors in it. Add these two items to that existing list. Do not create a
+# second sensor: key, that is invalid YAML.
+#
+# The badge publishes the text it acknowledged, but what matters is when the
+# acknowledgement arrived, so the arrival time is the state. An MQTT
+# value_template is rendered per message, not on a timer, so now() is safe
+# here.
+
+sensor:
+  - name: "Badge Alice last ack"
+    unique_id: badge_alice_last_ack
+    state_topic: "home/badges/alice/ack"
+    device_class: timestamp
+    icon: mdi:check-decagram
+    value_template: "{{ now().isoformat() }}"
+
+  - name: "Badge Bob last ack"
+    unique_id: badge_bob_last_ack
+    state_topic: "home/badges/bob/ack"
+    device_class: timestamp
+    icon: mdi:check-decagram
+    value_template: "{{ now().isoformat() }}"

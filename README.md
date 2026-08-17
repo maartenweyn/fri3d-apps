@@ -55,6 +55,68 @@ Known limitation: the timer only runs while the app is in the foreground.
 Switch to another app and it stops. Moving it into a MicroPythonOS Service is
 the next piece of work.
 
+### Berichtjes — `be.weyn.dinerbadge`
+
+Two badges in two bedrooms. Home Assistant sends "Eten over 10 minuten" from a
+dashboard button, both badges chime and light up, and one tap sends back a
+confirmation. If nobody confirms within three minutes, Home Assistant says so on
+your phone.
+
+- **A background service, not a screen.** The MQTT connection lives in a
+  `boot_completed` Service, so a message arrives while the child is playing a
+  game. The service posts a notification, lights the LEDs and pulls the screen
+  to the front.
+- **The same message twice is two messages.** Comparing incoming text with the
+  last one is the obvious way to avoid duplicates and it swallows exactly the
+  message you care about, so messages carry a sequence number instead.
+- **The name is typed on the badge.** Both badges run an identical copy of the
+  app. Behind the gear button you type which one this is, on the OS keyboard,
+  and the service resubscribes to that badge's topic on the spot. No editing a
+  file and reinstalling for the second badge, and no list to extend when a third
+  one shows up. What you type is folded to something a topic accepts, so a
+  stray capital or space cannot point the badge at a topic nobody publishes to.
+- **LEDs blink until someone answers**, then stop after half an hour. A light
+  flashing in a bedroom all night is worse than a message nobody answered, so
+  the nagging gives up while the message stays on screen and stays
+  acknowledgeable. Both the blinking and the timeout are set on the badge.
+- **Shows when it was sent.** "Eten over 10 minuten" only means something if
+  you know when those ten minutes started. The badge's clock is UTC even with
+  the timezone set, so the time is converted properly, and a badge that never
+  reached an NTP server shows no time rather than a wrong one.
+- **Honest about the link.** The screen shows "geen verbinding" when the service
+  is not connected, and an acknowledgement that failed to publish says so
+  instead of showing a green tick.
+- **Backs off out of range.** A failed connection retries after 2 seconds, then
+  4, up to a minute, rather than hammering the radio every second in a bedroom
+  with no WiFi.
+
+Home Assistant publishes to `home/badges/<name>/msg` and the badge answers on
+`home/badges/<name>/ack`. On the dashboard each badge gets a status that goes red
+when you send and green when the child answers, and back to grey after half an
+hour. All of it, as YAML you can paste, is in
+[docs/berichtjes-homeassistant/](docs/berichtjes-homeassistant/).
+
+#### Setting up a badge
+
+`umqtt.simple` turns out to be in the firmware already, so there is nothing to
+install. Create the per-badge config, which is gitignored because it holds the
+broker password:
+
+    cp be.weyn.dinerbadge/dinerbadge_config.example.py \
+       be.weyn.dinerbadge/dinerbadge_config.py
+    # set the broker address and the broker credentials
+    ./badge.sh reinstall be.weyn.dinerbadge
+    ./badge.sh reset          # the service starts at boot, so reboot once
+
+The same copy goes on every badge. Which badge is which is typed on the badge
+itself, behind the gear button, and has to match a topic Home Assistant
+publishes to.
+
+The Home Assistant side is in
+[docs/berichtjes-homeassistant/](docs/berichtjes-homeassistant/): the script that
+publishes, the sensors that timestamp the acknowledgements, the reminder
+automations and a dashboard card, with a README on where each piece goes.
+
 ## Installing an app
 
 **With the [Fri3d-IDE](https://fri3dcamp.github.io/Fri3d-IDE/)**, which is what
@@ -65,9 +127,12 @@ most people use. Build the package first:
 That writes `dist/be.fri3d.pomodoro_0.1.0.mpk`. In the IDE, connect the badge
 and choose *Install MPK*.
 
-**Over USB with mpremote**, which is faster while developing:
+**Over USB with mpremote**, which is faster while developing. With no app named
+it installs every app in the repo, since nothing here is more default than
+anything else:
 
-    ./badge.sh install
+    ./badge.sh install                      # all of them
+    ./badge.sh install be.weyn.dinerbadge   # just one
 
 **From BadgeHub**, once published: search for the app in the badge's App Store.
 
@@ -77,12 +142,13 @@ and choose *Install MPK*.
 `pip3 install --user mpremote`.
 
     ./badge.sh probe            # screen, fonts, inputs, LEDs, audio, build
+    ./badge.sh apps             # the app folders in this repo
     ./badge.sh list             # installed and built-in apps
-    ./badge.sh install [app]    # copy to /apps and refresh the launcher
-    ./badge.sh reinstall [app]  # remove from the badge first, then copy
+    ./badge.sh install [app..]  # copy to /apps and refresh the launcher
+    ./badge.sh reinstall [app..] # remove from the badge first, then copy
     ./badge.sh uninstall <app>  # remove one app
     ./badge.sh wipe             # remove every user-installed app
-    ./badge.sh diag [app]       # why it will not load, with real tracebacks
+    ./badge.sh diag [app..]     # why it will not load, with real tracebacks
     ./badge.sh refresh          # rescan /apps
     ./badge.sh reset            # reboot
     ./badge.sh run <file.py>    # run a local script on the badge
@@ -102,6 +168,7 @@ that does not exist on this build, and that is what surfaces them.
 The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
 
     python3 tests/test_pomodoro.py
+    python3 tests/test_dinerbadge.py
 
 67 checks covering the phase cycle, pause and resume timing, the day rollover,
 clamping in the settings screen, LED cleanup on exit, that the LED hourglass
@@ -135,11 +202,13 @@ trusting a documented import path.
 ## Layout
 
     be.fri3d.pomodoro/     an app, in a folder named after its app id
+    be.weyn.dinerbadge/    idem; its dinerbadge_config.py is untracked
     badge.sh               mpremote wrapper
     tools/                 scripts that run on the badge, plus the packager
     tools/mcp/             MCP server exposing the badge over USB
     tests/                 lvgl and mpos stubs, offline tests
-    docs/                  notes on MicroPythonOS and this badge
+    docs/                  notes on MicroPythonOS and this badge,
+                           plus the Home Assistant side of Berichtjes
     dist/                  built .mpk files, not tracked
 
 Most badge apps live in their own repository, one app each. This one keeps the

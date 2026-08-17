@@ -19,19 +19,145 @@ class Activity:
     def startActivity(self, intent):
         STARTED.append(intent)
 
+    def startActivityForResult(self, intent, callback):
+        STARTED.append(intent)
+        RESULTS_PENDING.append((intent, callback))
+
     def finish(self):
         pass
 
 
 STARTED = []
+RESULTS_PENDING = []      # (intent, callback) awaiting a result
+
+
+class Service:
+    """Stub of mpos.app.service.Service, re-exported from mpos."""
+
+    def __init__(self):
+        self.appFullName = None
+
+    def onCreate(self):
+        pass
+
+    def onStart(self, intent=None):
+        pass
+
+    def onDestroy(self):
+        pass
 
 
 class Intent:
-    def __init__(self, activity_class=None, action=None, data=None):
+    def __init__(self, activity_class=None, action=None, data=None,
+                 app_fullname=None):
         self.activity_class = activity_class
         self.action = action
         self.data = data
+        self.app_fullname = app_fullname
         self.extras = {}
+
+    def putExtra(self, key, value):
+        self.extras[key] = value
+        return self
+
+
+class InputActivity:
+    """Stand-in for the OS single-value input screen.
+
+    The real one owns the on-screen keyboard and hands back
+    {"result_code": bool, "data": {"value": str, ...}}. Tests drive that
+    contract directly through RESULTS_PENDING.
+    """
+    pass
+
+
+class Notification:
+    PRIORITY_MIN = -1
+    PRIORITY_LOW = 0
+    PRIORITY_DEFAULT = 1
+    PRIORITY_HIGH = 2
+    PRIORITY_MAX = 3
+
+    def __init__(self, notification_id=None, icon=None, title=None, text=None,
+                 priority=PRIORITY_DEFAULT, intent=None, auto_cancel=True,
+                 app_fullname=None):
+        assert notification_id, "a notification needs a stable id"
+        # Only string icons survive a reboot, and this firmware is picky about
+        # which lv.SYMBOL names exist at all.
+        assert isinstance(icon, str) and icon, "icon must be a non-empty string"
+        self.notification_id = notification_id
+        self.icon = icon
+        self.title = title
+        self.text = text
+        self.priority = priority
+        self.intent = intent
+        self.auto_cancel = auto_cancel
+        self.app_fullname = app_fullname
+
+
+class NotificationManager:
+    posted = []
+    cancelled = []
+
+    @classmethod
+    def reset(cls):
+        cls.posted = []
+        cls.cancelled = []
+
+    @classmethod
+    def notify(cls, notification):
+        cls.posted.append(notification)
+
+    @classmethod
+    def cancel(cls, notification_id):
+        cls.cancelled.append(notification_id)
+
+
+class AppManager:
+    started = []
+
+    @classmethod
+    def reset(cls):
+        cls.started = []
+
+    @classmethod
+    def start_app(cls, app_fullname):
+        cls.started.append(app_fullname)
+
+    @classmethod
+    def refresh_apps(cls):
+        pass
+
+
+class TaskManager:
+    """Records coroutines instead of running them.
+
+    The badge runs asyncio on the LVGL thread; the tests drive the service's
+    loop body by hand so a hung socket in a test cannot hang the suite.
+    """
+
+    tasks = []
+
+    @classmethod
+    def reset(cls):
+        for task in cls.tasks:
+            close = getattr(task, "close", None)
+            if close is not None:
+                close()
+        cls.tasks = []
+
+    @classmethod
+    def create_task(cls, coro):
+        cls.tasks.append(coro)
+        return coro
+
+    @classmethod
+    async def sleep(cls, seconds):
+        return None
+
+    @classmethod
+    def good_stack_size(cls):
+        return 8192
 
 
 class _Player:

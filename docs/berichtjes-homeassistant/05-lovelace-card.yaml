@@ -1,0 +1,281 @@
+# Not a config file. This is a dashboard view.
+#
+# Paste it into a dashboard: open the tab, click the pencil, then the three dots
+# and "Raw configuration editor".
+#
+# Needs custom:button-card from HACS, both scripts, the ack sensors and the
+# status sensors from 04-status-sensors.yaml.
+#
+# Each row starts with that badge's status: grey when nothing is running, red the
+# moment something is sent, green once the child confirms, grey again after half
+# an hour. Pressing the shared row turns both rows red, and they go green
+# independently.
+#
+# One row per recipient, the same five buttons in each. Rows beat a
+# target-picker here: sending is a two-second job at the top of the stairs, and a
+# dropdown turns it into three taps.
+#
+# WATCH THE TEXTS. Five near-identical buttons per row invite a copy-paste slip
+# where "within 15 minutes" ends up sending "within 10 minutes". Nothing breaks,
+# the message is just quietly wrong.
+
+title: Communication
+icon: mdi:room-service
+type: masonry
+cards:
+
+- type: horizontal-stack
+  title: Both
+  cards:
+  - type: custom:button-card
+    name: Both
+    icon: mdi:account-multiple-outline
+    color: var(--secondary-text-color)
+    tap_action:
+      action: none
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 15 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: both
+        text: Dinner within 15 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 10 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: both
+        text: Dinner within 10 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 5 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: both
+        text: Dinner within 5 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dishwasher
+    icon: mdi:dishwasher
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: both
+        text: You forgot the dishes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Come here
+    icon: mdi:bell-ring
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: both
+        text: Come downstairs
+
+- type: horizontal-stack
+  title: Alice
+  cards:
+  - type: custom:button-card
+    entity: sensor.badge_alice_status
+    name: Alice
+    show_state: false
+    tap_action:
+      action: none
+    state:
+    - value: waiting
+      icon: mdi:clock-alert-outline
+      color: var(--error-color)
+    - value: confirmed
+      icon: mdi:check-circle-outline
+      color: var(--success-color)
+    - value: neutral
+      icon: mdi:account-outline
+      color: var(--secondary-text-color)
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 15 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: alice
+        text: Dinner within 15 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 10 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: alice
+        text: Dinner within 10 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 5 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: alice
+        text: Dinner within 5 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dishwasher
+    icon: mdi:dishwasher
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: alice
+        text: You forgot the dishes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Come here
+    icon: mdi:bell-ring
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: alice
+        text: Come downstairs
+
+- type: horizontal-stack
+  title: Bob
+  cards:
+  - type: custom:button-card
+    entity: sensor.badge_bob_status
+    name: Bob
+    show_state: false
+    tap_action:
+      action: none
+    state:
+    - value: waiting
+      icon: mdi:clock-alert-outline
+      color: var(--error-color)
+    - value: confirmed
+      icon: mdi:check-circle-outline
+      color: var(--success-color)
+    - value: neutral
+      icon: mdi:account-outline
+      color: var(--secondary-text-color)
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 15 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: bob
+        text: Dinner within 15 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 10 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: bob
+        text: Dinner within 10 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dinner 5 min
+    icon: mdi:silverware-fork-knife
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: bob
+        text: Dinner within 5 minutes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Dishwasher
+    icon: mdi:dishwasher
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: bob
+        text: You forgot the dishes
+  - type: button
+    show_name: true
+    show_icon: true
+    name: Come here
+    icon: mdi:bell-ring
+    tap_action:
+      action: perform-action
+      perform_action: script.send_badge_message
+      data:
+        target: bob
+        text: Come downstairs
+
+- type: entities
+  title: Type it yourself
+  entities:
+  - entity: input_text.badge_message
+    name: Message
+  - type: buttons
+    entities:
+    - entity: script.send_badge_message_free_text
+      name: Alice
+      tap_action:
+        action: perform-action
+        perform_action: script.send_badge_message_free_text
+        data:
+          target: alice
+    - entity: script.send_badge_message_free_text
+      name: Bob
+      tap_action:
+        action: perform-action
+        perform_action: script.send_badge_message_free_text
+        data:
+          target: bob
+    - entity: script.send_badge_message_free_text
+      name: Both
+      tap_action:
+        action: perform-action
+        perform_action: script.send_badge_message_free_text
+        data:
+          target: both
+
+- type: entities
+  title: Status
+  entities:
+  - entity: input_datetime.last_message_alice
+    name: Last sent (Alice)
+  - entity: sensor.badge_alice_last_ack
+    name: Last confirmed (Alice)
+  - entity: input_datetime.last_message_bob
+    name: Last sent (Bob)
+  - entity: sensor.badge_bob_last_ack
+    name: Last confirmed (Bob)

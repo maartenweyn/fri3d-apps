@@ -118,6 +118,61 @@ Two things the general docs get wrong for this build:
        AudioManager.rtttl_player(tune, stream_type=AudioManager.STREAM_ALARM,
                                  output=buzzer).start()
 
+## More divergences, measured 2026-08-17 while building Berichtjes
+
+The firmware moved since the notes above were written, and three more documented
+paths turned out to be spelled differently. Same lesson: `dir()` first.
+
+5. **`from mpos import LightsManager` now works.** It is in the `mpos` exports on
+   this build, alongside `Service`, `NotificationManager`, `Notification`,
+   `Intent`, `AppManager` and `TaskManager`. `mpos.lights` still exists too, so
+   code that resolves across both keeps working. `mpos.config` is still missing.
+
+6. **The label wrap constant is `lv.label.LONG_MODE.WRAP`.** Neither
+   `lv.LABEL_LONG` nor `lv.LABEL_LONG_WRAP` exists. Get this wrong and
+   `set_long_mode` is silently skipped, so a long message runs off the side of
+   the screen instead of wrapping. `LONG_MODE` offers CLIP, DOTS, SCROLL,
+   SCROLL_CIRCULAR and WRAP; WRAP is 0. `lv.TEXT_ALIGN` exists,
+   `lv.TEXT_ALIGN_CENTER` does not.
+
+7. **`umqtt.simple` is already installed**, no `mip.install` needed, but its
+   `MQTTClient` takes **no `socket_timeout` argument**. Passing it raises
+   TypeError, so try the modern signature and fall back to the old one.
+
+8. **`time.localtime()` returns UTC even with the timezone preference set.**
+   Setting Europe/Brussels in the Settings app changes
+   `mpos.time.TimeZone.timezone_preference` but not what `time.localtime()`
+   answers, so a naive read is an hour or two behind the wall clock. The
+   conversion that works:
+
+       import mpos.time as mt
+       pref = mt.TimeZone.timezone_preference          # an attribute, not a method
+       posix = mt.TimeZone.timezone_to_posix_time_zone(pref)
+       parts = mt.localPTZtime.tztime(time.time(), posix)
+
+   `tztime` takes MicroPython's 2000-based epoch and the POSIX string, handles
+   DST, and returns a nine-tuple whose last element is the DST flag.
+   `mpos.time.localPTZtime` is a submodule reached through `mpos.time`, not
+   importable as `mpos.time.localPTZtime` directly.
+
+## Sixteen string methods MicroPython does not have
+
+`dir(str)` on this build lacks all of these, every one of which desktop Python
+answers happily:
+
+    capitalize   casefold     expandtabs   format_map
+    isdecimal    isidentifier isprintable  ljust
+    maketrans    removeprefix removesuffix rjust
+    swapcase     title        translate    zfill
+
+`center`, `encode`, `partition` and `rpartition` are present.
+
+This is a class of bug offline tests cannot catch, because the stubs run on real
+CPython where the method exists. `str.capitalize()` in Berichtjes passed 78
+desktop checks and then raised `AttributeError` in `onCreate` on the badge.
+`tests/test_dinerbadge.py` now greps the app source for these sixteen names, so
+the next one fails on a desktop.
+
 ## Badge inputs, measured
 
 `mpos.board` exposes exactly one submodule, named after the hardware id, with

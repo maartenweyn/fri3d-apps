@@ -1,0 +1,26 @@
+# Goes into: configuration.yaml
+#
+# WATCH OUT: if your configuration.yaml already has input_datetime: or
+# input_text:, add these children to the key you already have. A second
+# top-level key with the same name is invalid YAML and Home Assistant will
+# refuse to start.
+#
+# One input_datetime per badge. The automations in 04 compare it against the
+# acknowledgement timestamp, so this is what "sent at" means.
+
+input_datetime:
+  last_message_alice:
+    name: Last message to Alice
+    has_date: true
+    has_time: true
+  last_message_bob:
+    name: Last message to Bob
+    has_date: true
+    has_time: true
+
+# Free text to send from the dashboard. Shared by both badges: you pick who
+# gets it with the buttons in 05.
+input_text:
+  badge_message:
+    name: Message for the badges
+    max: 80

@@ -1,0 +1,36 @@
+# Goes into: sensor_template.yaml, or wherever your template: integration
+# points. That is a list of template blocks, so this belongs as a new
+# "- sensor:" item; do not merge it into an existing block.
+#
+# Three states per badge: neutral, waiting, confirmed. The card colours on it.
+#
+# Why this is not an automation: a template containing now() is re-rendered by
+# Home Assistant every minute, so falling back to neutral after half an hour
+# happens by itself. An automation with a delay would do the same thing while
+# keeping a timer that does not survive a restart.
+#
+# Keep the 1800 seconds below in step with ACK_TIMEOUT_MIN on the badges, or
+# they will still be blinking while the dashboard has gone neutral.
+
+- sensor:
+    - name: "Badge Alice status"
+      unique_id: badge_alice_status
+      state: >
+        {% set sent = as_timestamp(states('input_datetime.last_message_alice'), 0) %}
+        {% set ack = as_timestamp(states('sensor.badge_alice_last_ack'), 0) %}
+        {% set now_ts = as_timestamp(now()) %}
+        {% set timeout = 1800 %}
+        {{ 'neutral' if sent == 0
+           else ('confirmed' if (now_ts - ack) < timeout else 'neutral') if ack >= sent
+           else ('waiting' if (now_ts - sent) < timeout else 'neutral') }}
+
+    - name: "Badge Bob status"
+      unique_id: badge_bob_status
+      state: >
+        {% set sent = as_timestamp(states('input_datetime.last_message_bob'), 0) %}
+        {% set ack = as_timestamp(states('sensor.badge_bob_last_ack'), 0) %}
+        {% set now_ts = as_timestamp(now()) %}
+        {% set timeout = 1800 %}
+        {{ 'neutral' if sent == 0
+           else ('confirmed' if (now_ts - ack) < timeout else 'neutral') if ack >= sent
+           else ('waiting' if (now_ts - sent) < timeout else 'neutral') }}

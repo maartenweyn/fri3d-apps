@@ -1,0 +1,79 @@
+# Goes into: scripts.yaml
+#
+# That file holds one top-level key per script, with no "script:" wrapper, so
+# append these two as new top-level entries.
+#
+# Rename alice and bob to match CHILD_NAME on each badge.
+
+send_badge_message:
+  alias: Send a message to a badge
+  description: Publishes a short message to one badge, or to both at once.
+  icon: mdi:message-fast
+  mode: single
+  fields:
+    target:
+      name: Target
+      description: alice, bob or both
+      example: both
+      required: true
+      selector:
+        select:
+          options:
+          - alice
+          - bob
+          - both
+    text:
+      name: Text
+      description: Keep it short, the badge screen is 320 by 240.
+      example: Dinner in 10 minutes
+      required: true
+      selector:
+        text: null
+  sequence:
+  # An unknown target would publish to a topic no badge listens on, and then
+  # there is silence rather than an error.
+  - condition: template
+    value_template: '{{ target in [''alice'', ''bob'', ''both''] }}'
+  - variables:
+      targets: '{{ [''alice'', ''bob''] if target == ''both'' else [target] }}'
+  - repeat:
+      for_each: '{{ targets }}'
+      sequence:
+      - action: mqtt.publish
+        data:
+          topic: home/badges/{{ repeat.item }}/msg
+          payload: '{{ text }}'
+      # The send moment, which the reminder automations measure against.
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_message_{{ repeat.item }}
+        data:
+          timestamp: '{{ now().timestamp() }}'
+
+send_badge_message_free_text:
+  alias: Send a message to a badge (free text)
+  description: >-
+    Sends whatever is in input_text.badge_message. This exists because a
+    Lovelace button does not render templates in its tap_action, so the text
+    has to be looked up on this side.
+  icon: mdi:message-draw
+  mode: single
+  fields:
+    target:
+      name: Target
+      description: alice, bob or both
+      example: both
+      required: true
+      selector:
+        select:
+          options:
+          - alice
+          - bob
+          - both
+  sequence:
+  - condition: template
+    value_template: '{{ states(''input_text.badge_message'') | trim != '''' }}'
+  - action: script.send_badge_message
+    data:
+      target: '{{ target }}'
+      text: '{{ states(''input_text.badge_message'') | trim }}'
