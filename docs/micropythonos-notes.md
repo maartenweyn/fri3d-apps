@@ -84,3 +84,32 @@ does. `mpos.ui.focus_direction` helps with directional focus movement.
     mpremote repl
 
 Or use `./badge.sh` in this repo.
+
+## Fri3d 2026 badge, measured 2026-08-17
+
+From `./badge.sh probe` on the actual device:
+
+- MicroPython 1.27.0, `ESP32_GENERIC_S3-SPIRAM_OCT`, hardware id `fri3d_2026`
+- screen 320 x 240, touch (CST816S) **and** a keypad indev (Fri3d2026Expander),
+  so widgets in the default focus group are driven by both
+- largest font compiled in is `font_montserrat_28`; also 8/10/12/14/16/18/20/24
+  and `font_unscii_8/16`. Do not reach for 32 or 48, they are not there.
+- ~5.8 MB free RAM, ~2.1 MiB free of a 7 MiB filesystem
+- root also holds `retro-go`, `roms` and `romart` next to the MicroPythonOS dirs
+- built-in apps: about, appstore, file_manager, howto, launcher, osupdate,
+  settings (+ audio, hotspot, webserver, wifi)
+
+Two things the general docs get wrong for this build:
+
+1. **`from mpos import LightsManager` raises ImportError.** `LightsManager` is
+   not in the `mpos` exports on this firmware. Use `mpos.lights` instead and
+   fall back across both shapes.
+2. **The default audio output is the headset, not the buzzer.** Registered
+   outputs are `Headset+Communicator`, `Badge Buzzer` (kind `buzzer`),
+   `Headset` and `Communicator`; inputs are a headset ADC mic and a
+   communicator I2S mic. Pick the buzzer explicitly:
+
+       buzzer = next(o for o in AudioManager.get_outputs()
+                     if getattr(o, "kind", None) == "buzzer")
+       AudioManager.rtttl_player(tune, stream_type=AudioManager.STREAM_ALARM,
+                                 output=buzzer).start()

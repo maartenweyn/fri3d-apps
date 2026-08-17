@@ -34,36 +34,6 @@ class Intent:
         self.extras = {}
 
 
-class LightsManager:
-    log = []
-    _buf = None
-
-    @classmethod
-    def is_available(cls):
-        return True
-
-    @classmethod
-    def get_led_count(cls):
-        return 5
-
-    @classmethod
-    def set_all(cls, r, g, b):
-        assert all(0 <= c <= 255 for c in (r, g, b)), (r, g, b)
-        cls._buf = (r, g, b)
-
-    @classmethod
-    def set_led(cls, i, r, g, b):
-        cls._buf = (r, g, b)
-
-    @classmethod
-    def clear(cls):
-        cls._buf = (0, 0, 0)
-
-    @classmethod
-    def write(cls):
-        cls.log.append(cls._buf)
-
-
 class _Player:
     def __init__(self, rtttl):
         self.rtttl = rtttl
@@ -72,12 +42,34 @@ class _Player:
         AudioManager.played.append(self.rtttl)
 
 
+class _Output:
+    def __init__(self, name, kind):
+        self.name = name
+        self.kind = kind
+
+    def __repr__(self):
+        return "<AudioOutput %s kind=%s>" % (self.name, self.kind)
+
+
 class AudioManager:
     STREAM_ALARM = 2
     STREAM_NOTIFICATION = 1
     STREAM_MUSIC = 0
     played = []
+    routed = []
+    outputs = [_Output("Headset Output", "i2s"), _Output("Badge Buzzer", "buzzer")]
+
+    Output = _Output
 
     @classmethod
-    def rtttl_player(cls, rtttl, stream_type=None):
+    def get_outputs(cls):
+        return cls.outputs
+
+    @classmethod
+    def get_default_output(cls):
+        return cls.outputs[0]
+
+    @classmethod
+    def rtttl_player(cls, rtttl, stream_type=None, output=None):
+        cls.routed.append(output)
         return _Player(rtttl)

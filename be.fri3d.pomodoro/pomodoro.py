@@ -13,10 +13,33 @@ from mpos import Activity, Intent
 import mpos.config
 import mpos.ui
 
-try:
-    from mpos import LightsManager
-except Exception:
-    LightsManager = None
+
+
+def _find_lights():
+    """LightsManager moved around between builds; find whatever this one has.
+
+    On the Fri3d 2026 badge `from mpos import LightsManager` fails, but the
+    `mpos.lights` module is present, either exporting the class or the
+    functions themselves.
+    """
+    try:
+        from mpos import LightsManager as found
+        return found
+    except Exception:
+        pass
+    try:
+        import mpos.lights as module
+    except Exception:
+        return None
+    found = getattr(module, "LightsManager", None)
+    if found is not None:
+        return found
+    if hasattr(module, "write") and hasattr(module, "set_all"):
+        return module
+    return None
+
+
+LightsManager = _find_lights()
 
 try:
     from mpos import AudioManager
@@ -46,9 +69,9 @@ GEAR = getattr(getattr(lv, "SYMBOL", None), "SETTINGS", None) or "Set"
 
 def _big_font():
     """Largest Montserrat font compiled into this build, or None."""
-    for name in ("font_montserrat_48", "font_montserrat_44", "font_montserrat_40",
-                 "font_montserrat_36", "font_montserrat_34", "font_montserrat_32",
-                 "font_montserrat_28", "font_montserrat_24"):
+    for name in ("font_montserrat_48", "font_montserrat_40", "font_montserrat_36",
+                 "font_montserrat_32", "font_montserrat_28", "font_montserrat_24",
+                 "font_montserrat_20"):
         font = getattr(lv, name, None)
         if font is not None:
             return font
@@ -72,6 +95,7 @@ class Pomodoro(Activity):
         self._led_key = None
         self._ticking = False
         self._durations = None
+        self._buzzer_out = False   # False = not looked up yet
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -329,13 +353,32 @@ class Pomodoro(Activity):
         if self.cfg["leds"]:
             self._flash_until = time.ticks_add(time.ticks_ms(), FLASH_MS)
 
+    def _buzzer(self):
+        """The badge buzzer, not the headset, which is the default output."""
+        if self._buzzer_out is not False:
+            return self._buzzer_out
+        self._buzzer_out = None
+        try:
+            for out in AudioManager.get_outputs():
+                if getattr(out, "kind", None) == "buzzer" or "kind=buzzer" in repr(out):
+                    self._buzzer_out = out
+                    break
+        except Exception as exc:
+            print("pomodoro: could not list audio outputs:", exc)
+        return self._buzzer_out
+
     def _play(self, rtttl):
         if AudioManager is None:
             return
+        buzzer = self._buzzer()
         try:
-            player = AudioManager.rtttl_player(
-                rtttl, stream_type=AudioManager.STREAM_ALARM)
-            player.start()
+            if buzzer is not None:
+                AudioManager.rtttl_player(
+                    rtttl, stream_type=AudioManager.STREAM_ALARM,
+                    output=buzzer).start()
+            else:
+                AudioManager.rtttl_player(
+                    rtttl, stream_type=AudioManager.STREAM_ALARM).start()
         except Exception as exc:
             print("pomodoro: could not play chime:", exc)
 

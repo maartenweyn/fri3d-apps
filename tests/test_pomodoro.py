@@ -23,7 +23,8 @@ time.ticks_add = lambda a, b: a + b
 time.sleep_ms = lambda ms: None
 
 import mpos
-from mpos import LightsManager, AudioManager
+from mpos import AudioManager
+from mpos.lights import LightsManager
 import mpos.config as cfg
 import posettings, pomodoro
 
@@ -81,6 +82,9 @@ check(seen == expected, "phase order %s" % (seen,))
 check(app.done_today == 4, "four pomodoros counted, got %d" % app.done_today)
 check(len(AudioManager.played) == 8, "a chime at every transition, got %d" % len(AudioManager.played))
 check(len(LightsManager.log) > 8, "LEDs were driven (%d writes)" % len(LightsManager.log))
+check(pomodoro.LightsManager is LightsManager, "LightsManager resolved via mpos.lights")
+check(AudioManager.routed and all(o is not None and o.kind == "buzzer" for o in AudioManager.routed),
+      "chimes routed to the buzzer, not the headset: %s" % (AudioManager.routed,))
 check(cfg._STORE["be.fri3d.pomodoro"]["done_today"] == 4, "counter persisted")
 
 print("=== autostart off leaves the next phase paused ===")
