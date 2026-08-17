@@ -7,3 +7,4 @@ _to_delete/
 dist/
 tools/mcp/.venv/
 be.weyn.dinerbadge/dinerbadge_config.py
+be.weyn.muziek/muziek_config.py

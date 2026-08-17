@@ -53,6 +53,18 @@ class Obj:
             if code == EVENT.CLICKED:
                 cb(None)
 
+    def clean(self):
+        """Real LVGL deletes every child. A stub that only forgot them would
+        let a screen that rebuilds a list keep counting the old rows."""
+        for child in self.children:
+            child.parent = None
+        self.children = []
+
+    def delete(self):
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+        self.parent = None
+
 
 def obj(parent=None):
     return Obj(parent)
@@ -133,7 +145,7 @@ def group_get_default():
 EVENT = _Enum(CLICKED="clicked", VALUE_CHANGED="value_changed", KEY="key")
 FLEX_FLOW = _Enum(COLUMN=0, ROW=1)
 FLEX_ALIGN = _Enum(SPACE_EVENLY=0, CENTER=1, START=2)
-SCROLLBAR_MODE = _Enum(OFF=0)
+SCROLLBAR_MODE = _Enum(OFF=0, ON=1, ACTIVE=2, AUTO=3)
 # The Fri3d 2026 build has no lv.ANIM; it exposes the flat name instead.
 ANIM_OFF = 0
 ANIM_ON = 1
@@ -159,3 +171,5 @@ ALIGN = _Enum(TOP_MID=0, BOTTOM_MID=1, CENTER=2, TOP_LEFT=3, TOP_RIGHT=4)
 font_montserrat_28 = object()
 font_montserrat_24 = object()
 font_montserrat_20 = object()
+font_montserrat_18 = object()
+font_montserrat_16 = object()

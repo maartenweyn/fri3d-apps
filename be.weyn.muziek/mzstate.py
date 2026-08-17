@@ -1,0 +1,345 @@
+"""Gedeelde toestand tussen de vier schermen.
+
+De schermen tekenen alleen; het netwerk gebeurt hier, in taken. Elk scherm
+kijkt per frame naar `seq` en tekent alleen opnieuw als dat getal veranderd is.
+Dezelfde opzet als Berichtjes, om dezelfde reden: een coroutine kan niet in de
+UI grijpen, en een UI die op elk frame LVGL-tekst herschrijft flikkert.
+"""
+
+import asyncio
+import time
+
+import mzsonos
+import mzspotify
+
+PREFS_APP_ID = "be.weyn.muziek"
+
+try:
+    from mpos import SharedPreferences
+except Exception:                                    # pragma: no cover
+    try:
+        from mpos.config import SharedPreferences
+    except Exception:
+        SharedPreferences = None
+
+# muziek_config.py is gitignored, want daar staan de Spotify-sleutels in.
+# Zonder dat bestand werkt de app nog steeds, alleen met de Sonos-favorieten
+# in plaats van de playlists uit het account.
+try:
+    import muziek_config as _cfg
+except Exception:                                    # pragma: no cover
+    _cfg = None
+
+
+def _conf(naam, standaard):
+    return getattr(_cfg, naam, standaard) if _cfg else standaard
+
+
+SPOTIFY_CLIENT_ID = _conf("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_REFRESH_TOKEN = _conf("SPOTIFY_REFRESH_TOKEN", "")
+SONOS_IP = _conf("SONOS_IP", "")
+SHUFFLE = bool(_conf("SHUFFLE", True))
+DISCOVER_MS = int(_conf("DISCOVER_MS", 3000))
+
+# --- toestand -------------------------------------------------------------
+
+seq = 0                  # hoger na elke wijziging; de schermen kijken hiernaar
+status = ""              # eenregelige boodschap onderaan het scherm
+bezig = 0                # aantal lopende taken
+
+zones = []               # [{uid, ip, naam, baas, coordinator}]
+zone = None              # de gekozen zone, een van bovenstaande dicts
+
+speler = {"staat": "", "titel": "", "artiest": "", "volume": 0}
+lijsten = []             # [{naam, uri, aantal}] van Spotify
+favorieten = []          # [{titel, res, resmd}] van Sonos
+wekkers = []             # [{id, tijd, aan, herhaling, bron, volume, _ruw}]
+
+spotify_klaar = False    # is de playlistlijst ooit opgehaald deze sessie
+
+
+def _wijzig(boodschap=None):
+    global seq, status
+    seq += 1
+    if boodschap is not None:
+        status = boodschap
+
+
+def spotify_ingesteld():
+    return bool(SPOTIFY_CLIENT_ID and SPOTIFY_REFRESH_TOKEN)
+
+
+# --- taken ----------------------------------------------------------------
+
+def taak(coro, klaar=None):
+    """Start een coroutine en vang alles op wat eruit komt.
+
+    Een taak die stilletjes sterft is op een badge onzichtbaar: er is geen
+    console open. Elke fout eindigt daarom in de statusregel."""
+    async def wikkel():
+        global bezig
+        bezig += 1
+        _wijzig()
+        try:
+            uitkomst = await coro
+            if klaar is not None:
+                klaar(uitkomst)
+        except mzsonos.SonosError as e:
+            _wijzig(str(e))
+        except mzspotify.SpotifyError as e:
+            _wijzig(str(e))
+        except Exception as e:                        # pragma: no cover
+            print("muziek: taak mislukt:", e)
+            _wijzig("er ging iets mis")
+        finally:
+            bezig -= 1
+            _wijzig()
+    try:
+        return asyncio.create_task(wikkel())
+    except Exception:                                 # pragma: no cover
+        print("muziek: geen asyncio-loop, taak niet gestart")
+        return None
+
+
+# --- voorkeuren -----------------------------------------------------------
+
+def prefs_lezen():
+    if SharedPreferences is None:
+        return {}
+    try:
+        p = SharedPreferences(PREFS_APP_ID)
+        return {"uid": p.get_string("zone_uid", ""),
+                "ip": p.get_string("zone_ip", ""),
+                "naam": p.get_string("zone_naam", "")}
+    except Exception as e:
+        print("muziek: voorkeuren niet gelezen:", e)
+        return {}
+
+
+def prefs_schrijven(z):
+    if SharedPreferences is None or not z:
+        return False
+    try:
+        e = SharedPreferences(PREFS_APP_ID).edit()
+        e.put_string("zone_uid", z.get("uid") or "")
+        e.put_string("zone_ip", z.get("ip") or "")
+        e.put_string("zone_naam", z.get("naam") or "")
+        e.commit()
+        return True
+    except Exception as e:
+        print("muziek: voorkeuren niet bewaard:", e)
+        return False
+
+
+# --- zones ----------------------------------------------------------------
+
+async def zoek_zones():
+    """SSDP, dan een enkele topologie-call. Valt terug op het vaste IP uit de
+    config, want op netwerken die multicast blokkeren vindt SSDP niets."""
+    global zones
+    gevonden = {}
+    try:
+        gevonden = await mzsonos.discover(DISCOVER_MS)
+    except mzsonos.SonosError:
+        pass
+    ips = sorted(gevonden)
+    if SONOS_IP and SONOS_IP not in ips:
+        ips.insert(0, SONOS_IP)
+    if not ips:
+        zones = []
+        _wijzig("geen Sonos gevonden")
+        return []
+    laatste = None
+    for ip in ips:
+        try:
+            gevraagd = await mzsonos.zones(ip)
+            if gevraagd:
+                zones = gevraagd
+                _wijzig("%d boxen" % len(zones))
+                _herstel_keuze()
+                return zones
+        except mzsonos.SonosError as e:
+            laatste = e
+    zones = []
+    _wijzig(str(laatste) if laatste else "geen antwoord")
+    return []
+
+
+def _herstel_keuze():
+    """De vorige keuze terugvinden, op uid en niet op IP: DHCP verhuist een
+    speler, zijn uid verandert nooit."""
+    global zone
+    bewaard = prefs_lezen()
+    if zone is not None:
+        for z in zones:
+            if z["uid"] == zone["uid"]:
+                zone = z
+                return
+    uid = bewaard.get("uid")
+    if uid:
+        for z in zones:
+            if z["uid"] == uid:
+                zone = z
+                return
+    zone = zones[0] if zones else None
+
+
+def kies_zone(z):
+    global zone, wekkers
+    zone = z
+    wekkers = []
+    prefs_schrijven(z)
+    _wijzig("")
+
+
+def zone_baas():
+    """De speler die commando's aanneemt. Een slaaf in een groep weigert Play,
+    dus stuur alles naar de baas van zijn groep."""
+    if zone is None:
+        return None
+    if zone.get("baas"):
+        return zone
+    for z in zones:
+        if z["uid"] == zone.get("coordinator"):
+            return z
+    return zone
+
+
+# --- speler ---------------------------------------------------------------
+
+async def ververs_speler():
+    z = zone_baas()
+    if z is None:
+        return
+    ip = z["ip"]
+    staat = await mzsonos.state(ip)
+    nu = await mzsonos.now(ip)
+    vol = await mzsonos.get_volume(ip)
+    speler["staat"] = staat
+    speler["titel"] = nu["titel"]
+    speler["artiest"] = nu["artiest"]
+    speler["volume"] = vol
+    _wijzig()
+
+
+async def wissel_afspelen():
+    z = zone_baas()
+    if z is None:
+        return
+    if speler["staat"] == "PLAYING":
+        await mzsonos.pause(z["ip"])
+        speler["staat"] = "PAUSED_PLAYBACK"
+    else:
+        await mzsonos.play(z["ip"])
+        speler["staat"] = "PLAYING"
+    _wijzig()
+    await mzsonos.sleep_ms(400)
+    await ververs_speler()
+
+
+async def spring(vooruit):
+    z = zone_baas()
+    if z is None:
+        return
+    if vooruit:
+        await mzsonos.nxt(z["ip"])
+    else:
+        await mzsonos.prev(z["ip"])
+    await mzsonos.sleep_ms(600)
+    await ververs_speler()
+
+
+async def zet_volume(delta):
+    z = zone_baas()
+    if z is None:
+        return
+    nieuw = await mzsonos.set_volume(z["ip"], speler["volume"] + delta)
+    speler["volume"] = nieuw
+    _wijzig()
+
+
+# --- lijsten --------------------------------------------------------------
+
+async def ververs_lijsten(force=False):
+    """Playlists uit het Spotify-account, met de cache als eerste vulling."""
+    global lijsten, spotify_klaar
+    if not lijsten:
+        gecached = mzspotify.cache_lezen()
+        if gecached:
+            lijsten = gecached
+            _wijzig()
+    if not spotify_ingesteld():
+        _wijzig("Spotify niet ingesteld")
+        return lijsten
+    if spotify_klaar and not force:
+        return lijsten
+    verse = await mzspotify.playlists(SPOTIFY_CLIENT_ID, SPOTIFY_REFRESH_TOKEN)
+    if verse:
+        lijsten = verse
+        spotify_klaar = True
+        mzspotify.cache_schrijven(verse)
+    _wijzig("%d playlists" % len(lijsten))
+    return lijsten
+
+
+async def ververs_favorieten():
+    global favorieten
+    z = zone_baas()
+    if z is None:
+        return []
+    favorieten = await mzsonos.favorites(z["ip"])
+    _wijzig("%d favorieten" % len(favorieten))
+    return favorieten
+
+
+async def speel_lijst(uri, titel=""):
+    z = zone_baas()
+    if z is None:
+        return
+    _wijzig("bezig met " + titel)
+    aantal = await mzsonos.play_spotify(z["ip"], uri, shuffle=SHUFFLE,
+                                        titel=titel, speler_uid=z["uid"])
+    _wijzig("%s, %d nummers" % (titel, aantal))
+    await mzsonos.sleep_ms(700)
+    await ververs_speler()
+
+
+async def speel_favoriet(fav):
+    z = zone_baas()
+    if z is None:
+        return
+    _wijzig("bezig met " + fav["titel"])
+    await mzsonos.play_favorite(z["ip"], fav, speler_uid=z["uid"])
+    _wijzig(fav["titel"])
+    await mzsonos.sleep_ms(700)
+    await ververs_speler()
+
+
+# --- wekkers --------------------------------------------------------------
+
+async def ververs_wekkers():
+    global wekkers
+    if zone is None:
+        return []
+    wekkers = await mzsonos.alarms(zone["ip"], room_uuid=zone["uid"])
+    _wijzig("%d wekkers" % len(wekkers) if wekkers
+            else "geen wekkers voor deze box")
+    return wekkers
+
+
+async def zet_wekker(alarm, aan=None, minuten=0):
+    if zone is None:
+        return
+    tijd = mzsonos._shift_time(alarm["tijd"], minuten) if minuten else None
+    await mzsonos.update_alarm(zone["ip"], alarm, aan=aan, tijd=tijd)
+    _wijzig("%s %s" % (alarm["tijd"], "aan" if alarm["aan"] else "uit"))
+
+
+# --- opstarten ------------------------------------------------------------
+
+async def opstarten():
+    """Eenmalig per sessie: zones zoeken en de gekozen box uitlezen."""
+    if not zones:
+        await zoek_zones()
+    if zone is not None:
+        await ververs_speler()
