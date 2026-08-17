@@ -22,6 +22,8 @@ Then use the helper script:
     ./badge.sh install          # copy be.fri3d.pomodoro to the badge
     ./badge.sh reinstall        # remove it from the badge first, then copy
     ./badge.sh uninstall <id>   # remove one app
+    ./badge.sh refresh          # rescan /apps so the launcher sees new apps
+    ./badge.sh reset            # reboot the badge
     ./badge.sh run <file.py>    # run a local script on the badge
     ./badge.sh repl             # MicroPython REPL, ctrl-] to quit
 
@@ -31,8 +33,9 @@ be opened by one program at a time.
 `wipe` only clears `/apps`. Built-in apps live in the read-only `/builtin`
 and can only be changed by rebuilding the firmware.
 
-After installing, refresh the launcher on the badge, or start the app from
-the REPL:
+`install` and `reinstall` refresh the launcher themselves. If a new app still
+does not show up, `./badge.sh reset` reboots the badge, and app discovery also
+runs at boot. To skip the launcher entirely, start the app from the REPL:
 
     from mpos import AppManager
     AppManager.start_app('be.fri3d.pomodoro')

@@ -7,6 +7,8 @@
 #   ./badge.sh install [app]    copy an app folder to /apps (default: be.fri3d.pomodoro)
 #   ./badge.sh reinstall [app]  remove that app from /apps, then install it
 #   ./badge.sh uninstall <app>  remove one app from /apps
+#   ./badge.sh refresh          rescan /apps so new apps show in the launcher
+#   ./badge.sh reset            reboot the badge
 #   ./badge.sh run <file.py>    run a local python file on the badge, print output
 #   ./badge.sh repl             open the MicroPython REPL (ctrl-] to quit)
 #
@@ -52,6 +54,16 @@ print('removed /apps/${app}')
 "
 }
 
+refresh_launcher() {
+  # Rebuild the app list so the launcher picks up what we just copied.
+  # If that does not take, reboot: app discovery also runs at boot.
+  "$MPR" exec "
+from mpos import AppManager
+AppManager.refresh_apps()
+print('launcher sees:', sorted(a.fullname for a in AppManager.get_app_list()))
+" || echo "refresh failed; try: ./badge.sh reset"
+}
+
 cmd="${1:-help}"
 shift || true
 
@@ -78,6 +90,7 @@ for d in ('/apps', '/builtin/apps'):
     "$MPR" mkdir :/apps 2>/dev/null || true
     "$MPR" fs cp -r "$app" :/apps/
     echo "installed $app"
+    refresh_launcher
     ;;
   reinstall)
     app="${1:-$DEFAULT_APP}"
@@ -86,10 +99,18 @@ for d in ('/apps', '/builtin/apps'):
     "$MPR" mkdir :/apps 2>/dev/null || true
     "$MPR" fs cp -r "$app" :/apps/
     echo "reinstalled $app"
+    refresh_launcher
     ;;
   uninstall)
     app="${1:?usage: ./badge.sh uninstall <app-id>}"
     remote_rm_app "$app"
+    ;;
+  refresh)
+    refresh_launcher
+    ;;
+  reset)
+    "$MPR" reset
+    echo "badge rebooting"
     ;;
   run)
     file="${1:?usage: ./badge.sh run <file.py>}"
