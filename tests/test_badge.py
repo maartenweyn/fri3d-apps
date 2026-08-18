@@ -536,6 +536,26 @@ mpos.config._STORE.clear()
 equal("zonder oude voorkeuren valt er niets over te nemen",
       service.migrate_prefs(), False)
 
+# De volgorde die het op hardware fout deed. Het instelscherm importeert deze
+# module ook, en kan draaien voor de service ooit gestart is. Verliet je dat
+# scherm, dan schreef het de standaard uit het configbestand als naam weg, en
+# daarna zag de migratie een ingevulde naam en sloeg zichzelf over. De badge
+# heette dan voorgoed iets anders dan hij heette. Vandaar dat de migratie bij
+# het importeren gebeurt en niet in onCreate van de service.
+BRON = SOURCE.split("\n")
+def _regel(tekst):
+    for i, r in enumerate(BRON):
+        if r.strip() == tekst:
+            return i
+    return -1
+i_migrate = _regel("migrate_prefs()")
+i_load = _regel("load_prefs()")
+i_klasse = _regel("class BadgeService(Service):")
+check("migrate_prefs draait op modulehoogte", i_migrate > 0)
+check("en load_prefs erna", i_load == i_migrate + 1)
+check("allebei voor de klasse, dus voor een activity iets kan schrijven",
+      0 < i_migrate < i_klasse)
+
 
 # ===========================================================================
 

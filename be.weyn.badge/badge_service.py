@@ -324,7 +324,17 @@ def load_prefs():
     return renamed
 
 
-set_badge_name(BADGE_NAME)
+# Bij het importeren, niet pas in onCreate van de service.
+#
+# De activity importeert deze module ook, en een activity kan eerder draaien dan
+# de service: het instelscherm openen op een badge waarvan de service nog niet
+# gestart is, en het dan weer verlaten, schreef de standaard uit het
+# configbestand als naam weg. Daarna zag de migratie een ingevulde naam staan en
+# sloeg zichzelf over, en de badge heette voorgoed iets anders dan hij heette.
+# Wie het eerst importeert doet het nu, en dat is altijd voor er iets geschreven
+# kan worden.
+migrate_prefs()
+load_prefs()
 
 
 # --- de API waar andere apps op leunen --------------------------------------
