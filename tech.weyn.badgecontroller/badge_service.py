@@ -1050,9 +1050,14 @@ def scherm_zet(nieuw, nacht=False):
 JOY_OMHOOG = 4
 JOY_OMLAAG = 3
 
+# Alles wat een vinger kan indrukken: de joystick in vier richtingen, de
+# menuknop, en B, A, Y en X. Niet 0, 10 en 11: dat zijn de USB-stekker en de
+# twee lampjes van de lader, en die gaan vanzelf aan en uit.
+KNOPPEN = (1, 2, 3, 4, 5, 6, 7, 8, 9)
+
 _knop = None
 _knop_vorige = 1
-_joy_vorige = (False, False)
+_expander_vorige = None
 
 
 def _knop_pin():
@@ -1105,26 +1110,41 @@ def knop_flank():
     return neer
 
 
-def joystick_flank():
-    """+1 op het moment dat de joystick omhoog gaat, -1 bij omlaag, anders 0.
+def expander_flank():
+    """Wat er aan de knoppen gebeurde sinds de vorige lus.
 
-    Alleen de flank, niet het vasthouden: één beweging is één stap. Wordt elke
-    lus aangeroepen, ook als de klok niet staat, want anders is de eerste meting
-    een vergelijking met een stand van minuten geleden."""
-    global _joy_vorige
+    Geeft (richting, beweging) terug. `richting` is +1 op het moment dat de
+    joystick omhoog gaat en -1 bij omlaag, en alleen op de flank: vasthouden is
+    één stap. `beweging` is True zodra er wat dan ook aan de negen knoppen
+    verandert of ingedrukt staat.
+
+    Die tweede is nodig omdat elke knop de inactiviteitsteller reset, ook de
+    richtingen die hier niets doen. Zonder dat te weten ging de klok weg zodra
+    je de joystick aanraakte: links of rechts duwen deed niets, maar wekte de
+    badge wel, en dat is precies het tegenovergestelde van wat je bedoelde.
+
+    Wordt elke lus aangeroepen, ook als de klok niet staat, want anders is de
+    eerste meting een vergelijking met een stand van minuten geleden."""
+    global _expander_vorige
     try:
         digitaal = _expander().digital
-        omhoog = bool(digitaal[JOY_OMHOOG])
-        omlaag = bool(digitaal[JOY_OMLAAG])
+        nu = tuple(bool(digitaal[i]) for i in KNOPPEN)
     except Exception:
-        return 0
-    was_omhoog, was_omlaag = _joy_vorige
-    _joy_vorige = (omhoog, omlaag)
-    if omhoog and not was_omhoog:
-        return 1
-    if omlaag and not was_omlaag:
-        return -1
-    return 0
+        return 0, False
+    vorig = _expander_vorige
+    _expander_vorige = nu
+    if vorig is None:
+        return 0, any(nu)
+    beweging = any(nu) or nu != vorig
+    richting = 0
+    for plek, index in enumerate(KNOPPEN):
+        if not nu[plek] or vorig[plek]:
+            continue                      # niet nieuw ingedrukt
+        if index == JOY_OMHOOG:
+            richting = 1
+        elif index == JOY_OMLAAG:
+            richting = -1
+    return richting, beweging
 
 
 def idle_ms():
@@ -1157,10 +1177,17 @@ def screen_tick():
     krijgt: die roept wake() aan."""
     global _vorige_stil, _kijk_tot, _kijk_negeer
     gedrukt = knop_flank()
-    richting = joystick_flank()
+    richting, knopbeweging = expander_flank()
     stil = idle_ms()
     activiteit = stil < _vorige_stil
     _vorige_stil = stil
+
+    if knopbeweging and screen_state in (SCHERM_KLOK, SCHERM_KIJK):
+        # Een knop is geen vinger. Terwijl de klok staat mag alleen een
+        # aanraking hem wegnemen, en de reset die een knop achterlaat wordt hier
+        # verbruikt zodat hij dat niet alsnog doet.
+        activiteit = False
+        _vorige_stil = 0
 
     if SCREEN_OFF_S <= 0:
         scherm_zet(SCHERM_NORMAAL)

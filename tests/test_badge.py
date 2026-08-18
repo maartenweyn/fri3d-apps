@@ -127,6 +127,7 @@ def fresh_service(**prefs):
     service._klok_bright = None
     service._knop = None
     service._knop_vorige = 1
+    service._expander_vorige = None
     service.weer = {}
     service.nu_epoch = _echte_nu_epoch
     mpos.board.fri3d_2026.btn_start.release()
@@ -882,6 +883,7 @@ def beweeg(index):
 
 beweeg(service.JOY_OMLAAG)
 equal("omlaag dimt de klok", service.CLOCK_NIGHT, 3)
+equal("en de klok blijft staan", service.screen_state, service.SCHERM_KLOK)
 equal("en het scherm volgt meteen", mpos.io_expander.lcd_brightness, 3)
 equal("de klok blijft staan", service.screen_state, service.SCHERM_KLOK)
 beweeg(service.JOY_OMHOOG)
@@ -900,6 +902,32 @@ equal("vasthouden is één stap", service.CLOCK_NIGHT, 20)
 d[service.JOY_OMHOOG] = False
 JOY.digital = tuple(d)
 service.screen_tick()
+
+# Links en rechts doen hier niets, maar ze resetten de inactiviteitsteller wel:
+# het OS leest die knoppen ook. Zonder dat te verbruiken ging de klok weg zodra
+# je de joystick aanraakte, wat precies het tegenovergestelde is van wat je
+# bedoelde. Hetzelfde geldt voor de andere knoppen op de expander.
+for index in (1, 2, 5, 6, 7, 8, 9):
+    voor = (service.screen_state, service.CLOCK_NIGHT)
+    d = list(JOY.digital)
+    d[index] = True
+    JOY.digital = tuple(d)
+    mpos.ui.main_display.inactive_ms = 0        # de knop reset de teller
+    service.screen_tick()
+    d[index] = False
+    JOY.digital = tuple(d)
+    mpos.ui.main_display.inactive_ms = 50
+    service.screen_tick()
+    equal("knop %d laat de klok staan" % index,
+          (service.screen_state, service.CLOCK_NIGHT), voor)
+
+# Een vinger op het scherm wekt hem wel: dat is geen knop.
+mpos.ui.main_display.inactive_ms = 5_000
+service.screen_tick()
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("een aanraking wekt de badge wel", service.screen_state,
+      service.SCHERM_NORMAAL)
 
 # Met de app op het scherm is de joystick van die app.
 svc, overlay = scherm_opzet(NACHT)
