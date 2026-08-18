@@ -165,12 +165,39 @@ and none of them are about messages. They describe the badge.
   from zero. A badge that walks out of range or runs flat is marked unavailable
   by the broker through a real last will, rather than showing yesterday's reading
   forever.
-- **The screen turns itself off.** MicroPythonOS has no screen timeout and no
-  brightness setting, so this app polls the inactivity counter and drives the
-  brightness over the I2C expander. Anything from fifteen seconds to a quarter of
-  an hour, or never. It remembers the brightness from before it went dark, so a
-  badge set to 40 does not wake up at 100. An app with something to say calls
-  `wake()`, because a message on a dark badge is not a message.
+- **The screen turns itself off, or shows a clock.** MicroPythonOS has no screen
+  timeout and no brightness setting, so this app polls the inactivity counter and
+  drives the brightness over the I2C expander. Anything from fifteen seconds to a
+  quarter of an hour, or never. After that it either goes dark or leaves a dimmed
+  clock with the badge's name, the date, the battery and today's weather. It
+  remembers the brightness from before it went dark, so a badge set to 40 does not
+  wake up at 100. An app with something to say calls `wake()`, because a message
+  on a dark badge is not a message.
+- **The clock is an overlay, not an app.** It lives in `lv.layer_top()` above
+  whatever is running, so going back is nothing more than removing it. Starting an
+  activity would push the foreground app away, and then you have to remember where
+  you came from and hope that app survives it. The digits are drawn from
+  rectangles: the largest font in this firmware is `montserrat_28` and you do not
+  read that from bed.
+- **Night is darker, and then dark.** Behind *Nacht en helderheid* you set how
+  bright the clock is by day and by night, and between which two hours it is
+  night. The window wraps around midnight, so 23 to 7 means 23, 0, 1 through 6.
+  Inside it the clock drops to the night level, and after the same waiting period
+  again it goes out altogether. That second step has no setting of its own on
+  purpose: it would need a fifth row and a fifth row does not fit.
+- **One press of S in the dark.** It brings the clock back for ten seconds; a
+  second press returns you to the app underneath. So you can check the time at
+  night without lighting the room and without losing your place. Pressing S resets
+  the inactivity counter exactly like a finger does, so the service watches for
+  that counter *falling* rather than reading its value, and the button handler
+  consumes that fall before it can wake anything.
+- **Weather comes from Home Assistant over MQTT.** One retained message on
+  `home/badges/weer`, a topic that does not carry the badge's name because the
+  weather does not either. Every badge showing a clock reads the same message. The
+  YAML for the Home Assistant side is in
+  `tech.weyn.badgecontroller/homeassistant-weer.yaml`. Missing fields are not an
+  error, and a message that is not valid JSON leaves the previous one standing: a
+  sensor that is briefly unavailable should not empty the clock.
 - **Set up on the badge.** Name, broker, port, user and password are typed here
   and stored in SharedPreferences, so every badge runs an identical copy of the
   app and no password has to live in a file. The password is never displayed.

@@ -61,9 +61,26 @@ class Obj:
         self.children = []
 
     def delete(self):
+        """Real LVGL frees the object, which also takes it out of its group.
+        A stub that forgot the group would let a test pass while the device
+        keeps a dead reference in the focus chain."""
         if self.parent is not None and self in self.parent.children:
             self.parent.children.remove(self)
         self.parent = None
+        DEFAULT_GROUP.remove_obj(self)
+
+
+# De laag boven het actieve scherm. Op het toestel hangt hier de statusbalk in,
+# en het klokscherm van de Badge-app komt daar bovenop. Eén vast object, want
+# lv.layer_top() geeft op het toestel elke keer dezelfde laag terug.
+LAYER_TOP = None
+
+
+def layer_top():
+    global LAYER_TOP
+    if LAYER_TOP is None:
+        LAYER_TOP = Obj()
+    return LAYER_TOP
 
 
 def obj(parent=None):
@@ -130,9 +147,19 @@ def color_hex(v):
 class _Group:
     def __init__(self):
         self.objects = []
+        self.focused = None
 
     def add_obj(self, o):
         self.objects.append(o)
+
+    def remove_obj(self, o):
+        if o in self.objects:
+            self.objects.remove(o)
+        if self.focused is o:
+            self.focused = None
+
+    def get_focused(self):
+        return self.focused
 
 
 DEFAULT_GROUP = _Group()
@@ -140,6 +167,10 @@ DEFAULT_GROUP = _Group()
 
 def group_get_default():
     return DEFAULT_GROUP
+
+
+def group_focus_obj(o):
+    DEFAULT_GROUP.focused = o
 
 
 EVENT = _Enum(CLICKED="clicked", VALUE_CHANGED="value_changed", KEY="key")

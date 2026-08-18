@@ -35,10 +35,39 @@ MQTT_PASS = None
 # weet dat hij het deed.
 DISCOVERY_PREFIX = "homeassistant"
 
-# Na hoeveel seconden zonder aanraking het scherm uit gaat. 0 betekent nooit.
-# Ook in te stellen op de badge. Let op: de tik die het scherm wakker maakt komt
-# ook aan bij de knop eronder; dat is hoe deze firmware het aanlevert.
+# Na hoeveel seconden zonder aanraking de badge met rust gelaten wordt. 0
+# betekent nooit. Ook in te stellen op de badge. Let op: de tik die het scherm
+# wakker maakt komt ook aan bij de knop eronder; dat is hoe deze firmware het
+# aanlevert.
 SCREEN_OFF_S = 0
+
+# Wat er dan gebeurt: "uit" is donker, "klok" laat een gedimde klok staan met de
+# datum, de batterij en het weer. De klok is een overlay boven de app die op dat
+# moment draait, dus terugkeren is niets meer dan hem weghalen.
+IDLE_MODE = "uit"
+
+# Hoe fel die klok mag staan, overdag en 's nachts, 1..100. Nul zou uit zijn en
+# dat is geen klok. Terwijl de klok op het scherm staat maakt X hem feller en B
+# donkerder, en dat past de waarde aan die op dat moment geldt: dim je hem
+# vanuit bed, dan staat de nachtwaarde morgenavond meteen goed.
+CLOCK_DAY = 30
+CLOCK_NIGHT = 5
+
+# Het nachtvenster in hele uren lokale tijd. Het loopt over middernacht heen, dus
+# 23 tot 7 is 23, 0, 1 tot en met 6. Gelijke waarden betekenen: geen nacht.
+#
+# Binnen het venster gaat de klok naar CLOCK_NIGHT, en na nog eens SCREEN_OFF_S
+# gaat hij alsnog helemaal uit. Een druk op de S-knop laat hem dan tien seconden
+# zien; nog een druk brengt je terug naar de app die eronder stond.
+NIGHT_FROM = 23
+NIGHT_TO = 7
+
+# Waar het weerbericht vandaan komt. Eén retained bericht van Home Assistant op
+# een topic dat los staat van de naam van de badge, want het weer staat daar ook
+# los van: tien badges lezen hetzelfde bericht. De YAML voor de HA-kant staat in
+# de README. Leeg maken zet het uit; de klok toont dan alleen tijd, datum en
+# batterij.
+WEER_TOPIC = "home/badges/weer"
 
 # Het kleine debug-lampje op de I2C-expander, 0..100. Nul is uit, en dat is de
 # standaard: af fabriek staat hij op 50 en brandt hij dus altijd, ook 's nachts

@@ -1,31 +1,34 @@
-"""Scherm en lichtjes: wat de badge 's nachts uitstraalt.
+"""Scherm en lichtjes: wat de badge uitstraalt als je hem met rust laat.
 
-Een eigen scherm en geen twee extra rijen op het instelscherm, want daar passen
-er precies drie en de rijen scrollen niet: op een scrollbare container maakt
-LVGL van een tik die meebeweegt een scroll en dan leest de knop als dood.
+Een eigen scherm en geen extra rijen op het instelscherm, want daar passen er
+precies drie en de rijen scrollen niet: op een scrollbare container maakt LVGL
+van een tik die meebeweegt een scroll en dan leest de knop als dood. Hier passen
+er vier, en de vierde is de deur naar het nachtscherm.
 
-Twee dingen staan hier, en ze horen bij elkaar omdat ze allebei over licht in
-een slaapkamer gaan.
+Wat er te kiezen valt:
 
-De schermtimeout stuurt de helderheid over de I2C-expander, want de LVGL-weg
-(`main_display.get_backlight()`) geeft -1 op deze firmware.
+  * **Na inactiviteit** is wat er gebeurt als je de badge laat liggen: uit, of
+    een gedimde klok. De klok is een overlay boven de app die op dat moment
+    draait, dus wat je aan het doen was blijft staan.
+  * **Wachten** is hoe lang dat duurt. Dezelfde periode telt 's nachts een
+    tweede keer: eerst de gedimde klok, daarna alsnog donker.
+  * **Debug-LED** is het kleine lampje op de I2C-expander. Het staat af fabriek
+    op 50 en brandt dus altijd. De expander is een eigen microcontroller die
+    zijn instelling zelf bijhoudt, dus nul zetten overleeft een herstart van de
+    ESP32. Het wordt toch elke keer opnieuw toegepast, want een reflash van die
+    firmware zet hem terug en dan sta je weer met een lampje in het donker.
 
-De debug-LED is het kleine lampje op diezelfde expander. Het staat af fabriek op
-50 en brandt dus altijd. De expander is een eigen microcontroller die zijn
-instelling zelf bijhoudt, dus nul zetten overleeft een herstart van de ESP32.
-Het wordt hier toch elke keer opnieuw toegepast, want een reflash van die
-firmware zet hem terug en dan sta je weer met een lampje in het donker.
-
-Wat hier niet bij staat: de twee groene LEDs van de lader. Die hangen aan de
-CHRG- en STDBY-pinnen van de TP4056 op de voedingspagina van het schema, en dat
-zijn uitgangen van de laadchip zelf. Geen software raakt daaraan.
+Wat hier niet bij staat: de drie lampjes van de lader op de hoek van de print.
+Die hangen aan de CHRG- en STDBY-pinnen van de TP4056 en aan VUSB, en dat zijn
+uitgangen van de laadchip zelf. Geen software raakt daaraan.
 """
 
 import lvgl as lv
 
-from mpos import Activity
+from mpos import Activity, Intent
 
 import badge_service as service
+from bgnight import BadgeNight
 
 try:
     from mpos import SharedPreferences
@@ -46,6 +49,9 @@ TIMEOUTS = (0, 15, 30, 60, 120, 300, 600, 900)
 # een nachtlampje wordt.
 DEBUG_LEDS = (0, 5, 15, 30, 50, 75, 100)
 
+MODES = ("uit", "klok")
+MODE_TEXT = {"uit": "scherm uit", "klok": "klok tonen"}
+
 
 def timeout_text(seconden):
     if not seconden:
@@ -61,16 +67,13 @@ def led_text(niveau):
     return "uit" if not niveau else "%d%%" % niveau
 
 
-def _volgende(waarden, huidig, delta):
-    """Een stap door een vaste reeks, zonder om te slaan.
+def mode_text(mode):
+    return MODE_TEXT.get(mode, MODE_TEXT["uit"])
 
-    Omslaan van uit naar honderd met een misgetikte plus is precies wat je in
-    een donkere kamer niet wil."""
-    try:
-        index = waarden.index(huidig)
-    except ValueError:
-        index = 0
-    return waarden[min(len(waarden) - 1, max(0, index + delta))]
+
+# De stap door een vaste reeks staat in de service, want de knoppen X en B op het
+# klokscherm lopen langs dezelfde trappen en die worden daar afgehandeld.
+volgende = service.stap
 
 
 class BadgeLight(Activity):
@@ -79,14 +82,18 @@ class BadgeLight(Activity):
         super().__init__()
         self.screen_off_s = 0
         self.debug_led = 0
+        self.idle_mode = "uit"
         self.timeout_label = None
         self.led_label = None
+        self.mode_label = None
 
     # --- levenscyclus ------------------------------------------------------
 
     def onCreate(self):
         self.screen_off_s = int(service.SCREEN_OFF_S or 0)
         self.debug_led = int(service.DEBUG_LED or 0)
+        self.idle_mode = service.IDLE_MODE if service.IDLE_MODE in MODES \
+            else "uit"
 
         screen = lv.obj()
         screen.set_style_pad_all(8, 0)
@@ -98,21 +105,15 @@ class BadgeLight(Activity):
         title.set_text("Scherm en lichtjes")
         title.set_style_text_color(lv.color_hex(COL_DIM), 0)
 
+        self.mode_label = self._stepper_row(
+            screen, "Na inactiviteit", mode_text(self.idle_mode),
+            self._cycle_mode)
         self.timeout_label = self._stepper_row(
-            screen, "Scherm uit na", timeout_text(self.screen_off_s),
+            screen, "Wachten", timeout_text(self.screen_off_s),
             self._cycle_timeout)
         self.led_label = self._stepper_row(
             screen, "Debug-LED", led_text(self.debug_led), self._cycle_led)
-
-        hint = lv.label(screen)
-        hint.set_width(304)
-        try:
-            hint.set_long_mode(lv.label.LONG_MODE.WRAP)
-        except Exception:
-            pass
-        hint.set_text("De twee groene lampjes zijn van de lader en zitten "
-                      "vast aan de chip. Daar kan software niets aan doen.")
-        hint.set_style_text_color(lv.color_hex(COL_DIM), 0)
+        self._wide_button(screen, "Nacht en helderheid...", self._open_night)
 
         self.setContentView(screen)
 
@@ -122,18 +123,30 @@ class BadgeLight(Activity):
 
     # --- invoer ------------------------------------------------------------
 
+    def _cycle_mode(self, delta):
+        self.idle_mode = volgende(MODES, self.idle_mode, delta)
+        if self.mode_label is not None:
+            self.mode_label.set_text(mode_text(self.idle_mode))
+
     def _cycle_timeout(self, delta):
-        self.screen_off_s = _volgende(TIMEOUTS, self.screen_off_s, delta)
+        self.screen_off_s = volgende(TIMEOUTS, self.screen_off_s, delta)
         if self.timeout_label is not None:
             self.timeout_label.set_text(timeout_text(self.screen_off_s))
 
     def _cycle_led(self, delta):
-        self.debug_led = _volgende(DEBUG_LEDS, self.debug_led, delta)
+        self.debug_led = volgende(DEBUG_LEDS, self.debug_led, delta)
         if self.led_label is not None:
             self.led_label.set_text(led_text(self.debug_led))
         # Meteen toepassen, want dit is het soort instelling waarvan je het
         # resultaat wil zien terwijl je hem zet.
         service.apply_debug_led(self.debug_led)
+
+    def _open_night(self):
+        # Eerst bewaren: het nachtscherm leest service.CLOCK_DAY en dat komt uit
+        # de voorkeuren. Wie hier net op "klok" zette moet daar niet nog een
+        # scherm zien dat van het tegendeel uitgaat.
+        self._save()
+        self.startActivity(Intent(activity_class=BadgeNight))
 
     # --- rijen -------------------------------------------------------------
 
@@ -201,6 +214,16 @@ class BadgeLight(Activity):
         self._step_button(row, "+", lambda c=cycle: c(1))
         return value_label
 
+    def _wide_button(self, parent, text, callback):
+        btn = lv.button(parent)
+        btn.set_size(lv.pct(100), ROW_HEIGHT)
+        btn.add_event_cb(lambda event, cb=callback: cb(), lv.EVENT.CLICKED, None)
+        label = lv.label(btn)
+        label.set_text(text)
+        label.center()
+        self._focusable(btn)
+        return label
+
     # --- bewaren -----------------------------------------------------------
 
     def _save(self):
@@ -208,6 +231,7 @@ class BadgeLight(Activity):
             editor = SharedPreferences(service.PREFS_APP_ID).edit()
             editor.put_int("screen_off_s", int(self.screen_off_s))
             editor.put_int("debug_led", int(self.debug_led))
+            editor.put_string("idle_mode", self.idle_mode)
             editor.commit()
         except Exception as e:
             print("badge lichtjes: kon niet bewaren:", e)

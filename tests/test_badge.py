@@ -37,6 +37,12 @@ _config.MQTT_PASS = "example-secret"
 _config.DISCOVERY_PREFIX = "homeassistant"
 _config.SCREEN_OFF_S = 0
 _config.DEBUG_LED = 0
+_config.IDLE_MODE = "uit"
+_config.CLOCK_DAY = 30
+_config.CLOCK_NIGHT = 5
+_config.NIGHT_FROM = 23
+_config.NIGHT_TO = 7
+_config.WEER_TOPIC = "home/badges/weer"
 _config.TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
 sys.modules["badge_config"] = _config
 
@@ -45,6 +51,7 @@ from umqtt.simple import BROKER                       # noqa: E402
 import mpos                                           # noqa: E402
 import mpos.ui                                        # noqa: E402
 import mpos.config                                    # noqa: E402
+import mpos.board                                     # noqa: E402
 
 import badge_service as service                       # noqa: E402
 from badge_service import BadgeService                # noqa: E402
@@ -85,6 +92,11 @@ _fake_time.time = Clock.time
 service.time = _fake_time
 
 
+# nu_epoch wordt in de schermtests vervangen door een vast tijdstip; hier staat
+# het origineel zodat elke verse service er weer mee begint.
+_echte_nu_epoch = service.nu_epoch
+
+
 def fresh_service(**prefs):
     """Een brug op een werkende broker, verbonden."""
     BROKER.reset()
@@ -106,8 +118,25 @@ def fresh_service(**prefs):
     service.wifi_rssi = None
     service.screen_off = False
     service._bright_saved = None
+    service.screen_state = service.SCHERM_NORMAAL
+    service._vorige_stil = 0
+    service._kijk_tot = 0
+    service._kijk_negeer = 0
+    service._overlay = None
+    service._klok_seconde = None
+    service._klok_bright = None
+    service._knop = None
+    service._knop_vorige = 1
+    service.weer = {}
+    service.nu_epoch = _echte_nu_epoch
+    mpos.board.fri3d_2026.btn_start.release()
     service.SCREEN_OFF_S = 0
     service.DEBUG_LED = 0
+    service.IDLE_MODE = "uit"
+    service.CLOCK_DAY = 30
+    service.CLOCK_NIGHT = 5
+    service.NIGHT_FROM = 23
+    service.NIGHT_TO = 7
     service.MQTT_BROKER = _config.MQTT_BROKER
     service.MQTT_PORT = _config.MQTT_PORT
     service.MQTT_USER = _config.MQTT_USER
@@ -136,6 +165,18 @@ def configs():
                 if topic.startswith("homeassistant/"))
 
 
+def abos():
+    """De abonnementen bij de broker, zonder het weertopic.
+
+    Het weer is geen app die zich aanmeldt maar iets wat de service zelf neemt,
+    dus het hoort niet thuis in een test over de API voor apps."""
+    return [t for t in BROKER.subscriptions if t != service.WEER_TOPIC]
+
+
+def suffixen():
+    return [s for s in service._subscribers if s != service.WEER_TOPIC]
+
+
 def published(suffix):
     return [(t, p) for t, p in BROKER.published if t.endswith("/" + suffix)]
 
@@ -161,6 +202,19 @@ with open(os.path.join(APP_DIR, "badge_service.py")) as fh:
     SOURCE = fh.read()
 check("de service bouwt geen widgets",
       "lv.obj(" not in SOURCE and "lv.label(" not in SOURCE)
+
+# bgclock wordt bij het importeren van deze module geladen en niet pas als er een
+# klok nodig is. Een service draait met sys.path op ['lib', '', '.frozen', '/lib']
+# en cwd op '/', en de map van de app staat daar niet in: een import binnen een
+# functie geeft daar ImportError. Op de badge gemeten. Het gevolg was stil, en
+# dat is het ergste soort: de badge ging gewoon uit in plaats van een klok te
+# tonen, want zonder klok is donker beter dan een verlicht leeg scherm.
+check("bgclock wordt op modulehoogte geladen",
+      _regel_in_bron("import bgclock as _bgclock") > 0)
+equal("en er staat er maar een",
+      [r.strip() for r in SOURCE.split("\n")
+       if r.strip().startswith("import bgclock")],
+      ["import bgclock as _bgclock"])
 
 # CPython heeft deze; MicroPython 1.27 op deze badge niet. Gemeten met dir(str)
 # op het toestel. Een desktoptest kan een aanroep hiervan niet vangen, want
@@ -284,7 +338,7 @@ svc = fresh_service()
 del ontvangen[:]
 service.subscribe("msg", onthoud)
 equal("abonneren vertaalt het achtervoegsel naar een topic",
-      BROKER.subscriptions, ["home/badges/alice/msg"])
+      abos(), ["home/badges/alice/msg"])
 
 BROKER.deliver("home/badges/alice/msg", "Eten over 10 minuten")
 svc._pump()
@@ -297,8 +351,8 @@ equal("en de payload als bytes", ontvangen[0][1], b"Eten over 10 minuten")
 # dubbel.
 service.subscribe("msg", onthoud)
 equal("twee keer abonneren is niet twee abonnementen",
-      len(service._subscribers), 1)
-equal("en het levert geen tweede subscribe op", BROKER.subscriptions,
+      len(suffixen()), 1)
+equal("en het levert geen tweede subscribe op", abos(),
       ["home/badges/alice/msg"])
 
 # Een callback die gooit mag de anderen niet meenemen, en al helemaal niet de
@@ -340,7 +394,7 @@ BROKER.subscriptions[:] = []
 service.set_badge_name("bob")
 Clock.advance(1000)
 svc._pump()
-equal("na hernoemen luistert hij op de nieuwe naam", BROKER.subscriptions,
+equal("na hernoemen luistert hij op de nieuwe naam", abos(),
       ["home/badges/bob/msg"])
 equal("de topics zijn mee", service.topic("msg"), "home/badges/bob/msg")
 equal("en het client-id ook", service.CLIENT_ID,
@@ -460,53 +514,419 @@ equal("en de oude is stilgezet", svc._running, False)
 
 
 # ===========================================================================
-# Het scherm
+# Het weerbericht
+# ===========================================================================
+# Komt van Home Assistant over MQTT, uit een template in andermans configuratie.
+# Ruim zijn in wat je accepteert is hier geen slordigheid maar de enige manier
+# om niet elke keer dat iemand zijn YAML aanpast een lege klok te krijgen.
+
+equal("het afgesproken bericht", service.parse_weer(
+    b'{"toestand": "rainy", "nu": 12.4, "max": 15, "min": 8}'),
+    {"toestand": "rainy", "nu": 12.4, "max": 15.0, "min": 8.0})
+equal("de Engelse namen uit Home Assistant werken ook", service.parse_weer(
+    '{"condition": "sunny", "temperature": 21, "templow": 11}'),
+    {"toestand": "sunny", "nu": 21.0, "min": 11.0})
+equal("een dict mag rechtstreeks", service.parse_weer({"state": "cloudy"}),
+      {"toestand": "cloudy"})
+equal("null in een veld gooit de rest niet weg", service.parse_weer(
+    '{"toestand": "rainy", "nu": null, "max": 15}'),
+    {"toestand": "rainy", "max": 15.0})
+equal("een temperatuur die geen getal is valt weg", service.parse_weer(
+    '{"toestand": "rainy", "nu": "unavailable"}'), {"toestand": "rainy"})
+equal("geen JSON is geen weerbericht", service.parse_weer(b"unknown"), {})
+equal("en leeg ook niet", service.parse_weer(b""), {})
+equal("een lijst is geen weerbericht", service.parse_weer("[1, 2]"), {})
+
+# Een kapot bericht mag het vorige niet wissen: dan staat de klok zonder weer
+# omdat een sensor even niet beschikbaar was.
+svc = fresh_service()
+service._on_weer("home/badges/weer", b'{"toestand": "sunny", "nu": 20}')
+equal("het weer is binnengekomen", service.weer.get("toestand"), "sunny")
+service._on_weer("home/badges/weer", b"unavailable")
+equal("en een kapot bericht laat het staan", service.weer.get("toestand"),
+      "sunny")
+
+check("de service is geabonneerd op het weertopic",
+      service.WEER_TOPIC in service._subscribers)
+equal("op het gedeelde topic, niet op dat van deze badge",
+      service.topic(service.WEER_TOPIC), "home/badges/weer")
+check("en de broker heeft dat abonnement gezien",
+      "home/badges/weer" in BROKER.subscriptions)
+
+
+# ===========================================================================
+# Datum, en wanneer het nacht is
 # ===========================================================================
 
+def epoch_op(jaar, maand, dag, uur, minuut=0):
+    """Een tijdstip in lokale tijd, in de telling die de badge gebruikt.
+
+    De badge telt vanaf 2000 en de stub rekent altijd met de zomertijdoffset van
+    twee uur, wat voor augustus klopt."""
+    import calendar
+    unix = calendar.timegm((jaar, maand, dag, uur, minuut, 0, 0, 1, 0)) - 7200
+    return unix - 946684800
+
+
+equal("de klok in lokale tijd", service.clock_text(epoch_op(2026, 8, 17, 7, 16)),
+      "07:16")
+equal("de datum kort en klein", service.date_text(epoch_op(2026, 8, 17, 7, 16)),
+      "ma 17 aug")
+equal("en de dag klopt de volgende dag ook",
+      service.date_text(epoch_op(2026, 8, 18, 23, 59)), "di 18 aug")
+equal("zonder tijd geen datum", service.date_text(0), "")
+
+# nu_epoch moet dezelfde telling gebruiken als local_parts. Op de badge zijn dat
+# er twee: MicroPython telt vanaf 2000 en mpos.time.epoch_seconds() geeft
+# Unix-seconden. Het verschil is 10957 hele dagen, dus het uur klopt en de datum
+# niet. De badge zei donderdag 17 augustus terwijl het dinsdag de 18e was.
+Clock.now = epoch_op(2026, 8, 18, 14, 5)
+equal("nu_epoch telt zoals de rest", service.nu_epoch(), int(Clock.now))
+equal("dus de klok klopt", service.clock_text(service.nu_epoch()), "14:05")
+equal("en de datum ook", service.date_text(service.nu_epoch()), "di 18 aug")
+Clock.now = 1_000_000.0
+equal("een klok die nooit gezet is geeft niets",
+      service.date_text(epoch_op(2001, 1, 1, 12)), "")
+
+# Het venster loopt over middernacht. Dat is de normale vorm en niet het
+# randgeval: 23 tot 7 moet 01:00 nacht noemen.
+check("23:30 valt in de nacht",
+      service.is_night(epoch_op(2026, 8, 17, 23, 30), 23, 7))
+check("01:00 ook", service.is_night(epoch_op(2026, 8, 18, 1), 23, 7))
+check("06:59 nog net", service.is_night(epoch_op(2026, 8, 18, 6, 59), 23, 7))
+check("07:00 niet meer",
+      not service.is_night(epoch_op(2026, 8, 18, 7), 23, 7))
+check("en de namiddag zeker niet",
+      not service.is_night(epoch_op(2026, 8, 18, 15), 23, 7))
+check("een venster binnen één dag werkt gewoon",
+      service.is_night(epoch_op(2026, 8, 18, 14), 13, 16))
+check("van gelijk aan tot betekent: geen nacht",
+      not service.is_night(epoch_op(2026, 8, 18, 3), 7, 7))
+check("zonder klok is het geen nacht", not service.is_night(0, 23, 7))
+
+# De trap waarlangs X en B lopen, en waar de twee instelschermen dezelfde
+# waarden uit halen. Niet omslaan: van uit naar honderd met een misgetikte plus
+# is precies wat je in een donkere kamer niet wil.
+equal("een stap omhoog", service.stap((1, 2, 5, 10), 2, 1), 5)
+equal("en omlaag", service.stap((1, 2, 5, 10), 5, -1), 2)
+equal("onderaan blijft het onderaan", service.stap((1, 2, 5, 10), 1, -1), 1)
+equal("en bovenaan bovenaan", service.stap((1, 2, 5, 10), 10, 1), 10)
+equal("een waarde buiten de reeks vindt eerst zijn plaats",
+      service.stap((1, 2, 5, 10), 4, 0), 5)
+equal("en stapt dan vanaf daar", service.stap((1, 2, 5, 10), 4, 1), 10)
+equal("iets dat geen getal is begint vooraan",
+      service.stap((1, 2, 5, 10), None, 1), 2)
+
+# X maakt de klok feller en B donkerder, en welke van de twee waarden je
+# bijstelt hangt af van waar je bent. Zo dim je hem vanuit bed en staat hij
+# morgenavond meteen goed.
 svc = fresh_service()
-service.SCREEN_OFF_S = 0
+service.nu_epoch = lambda: epoch_op(2026, 8, 18, 2)
+service.NIGHT_FROM = 23
+service.NIGHT_TO = 7
+service.CLOCK_NIGHT = 5
+service.CLOCK_DAY = 30
+equal("'s nachts stelt B de nachtwaarde bij",
+      service.klok_niveau_stap(-1), 3)
+equal("de dagwaarde blijft", service.CLOCK_DAY, 30)
+equal("en het is bewaard",
+      mpos.config.SharedPreferences(service.PREFS_APP_ID).get_int(
+          "clock_night", 0), 3)
+
+# Een toets reset de inactiviteitsteller net zo goed als een vinger. Zonder dat
+# die daling hier verbruikt wordt, zou de badge klaarwakker worden op de druk
+# waarmee je hem juist wilde dimmen.
+service.screen_state = service.SCHERM_KLOK
+service._vorige_stil = 600_000
+service.klok_niveau_stap(-1)
+mpos.ui.main_display.inactive_ms = 0
+service.SCREEN_OFF_S = 30
+service.IDLE_MODE = "klok"
+service.screen_tick()
+equal("dimmen met B wekt de badge niet", service.screen_state,
+      service.SCHERM_KLOK)
+
+svc = fresh_service()
+service.nu_epoch = lambda: epoch_op(2026, 8, 18, 14)
+service.NIGHT_FROM = 23
+service.NIGHT_TO = 7
+service.CLOCK_DAY = 30
+equal("overdag stelt X de dagwaarde bij", service.klok_niveau_stap(1), 50)
+equal("de nachtwaarde blijft", service.CLOCK_NIGHT, 5)
+equal("en ook dat is bewaard",
+      mpos.config.SharedPreferences(service.PREFS_APP_ID).get_int(
+          "clock_day", 0), 50)
+
+svc = fresh_service()
+equal("de klokhelderheid overdag",
+      service.klok_helderheid(False), service.CLOCK_DAY)
+equal("en 's nachts", service.klok_helderheid(True), service.CLOCK_NIGHT)
+service.CLOCK_NIGHT = 0
+equal("nul zou uit zijn, en dat is geen klok",
+      service.klok_helderheid(True), 1)
+service.CLOCK_NIGHT = 5
+
+
+# ===========================================================================
+# Het klokscherm
+# ===========================================================================
+# De klok is een overlay boven de app die draait, dus terugkeren is niets meer
+# dan hem weghalen. Hier wordt niet getekend; wat geteld wordt is welke toestand
+# de service kiest en op welke helderheid het scherm daarbij komt.
+
+class Overlay:
+    """Wat bgclock op het toestel doet, geteld in plaats van getekend."""
+
+    def __init__(self):
+        self.op = False
+        self.updates = []
+        self.gebouwd = 0
+
+    def toon(self):
+        if not self.op:
+            self.gebouwd += 1
+        self.op = True
+        return True
+
+    def weg(self):
+        was = self.op
+        self.op = False
+        return was
+
+    def zichtbaar(self):
+        return self.op
+
+    def werk_bij(self, tijd, datum, batterij, weer, naam=""):
+        self.updates.append((tijd, datum, batterij, dict(weer or {}), naam))
+        return True
+
+
+NACHT = epoch_op(2026, 8, 18, 2)
+DAG = epoch_op(2026, 8, 18, 14)
+
+
+def scherm_opzet(uur_epoch, mode="klok", timeout=30):
+    """Een verse service met een namaakklok en een tijdstip dat wij kiezen."""
+    svc = fresh_service()
+    service.SCREEN_OFF_S = timeout
+    service.IDLE_MODE = mode
+    service.NIGHT_FROM = 23
+    service.NIGHT_TO = 7
+    service.CLOCK_DAY = 30
+    service.CLOCK_NIGHT = 5
+    service.nu_epoch = lambda: uur_epoch
+    overlay = Overlay()
+    service._overlay = overlay
+    mpos.io_expander.lcd_brightness = 100
+    service.screen_tick()
+    return svc, overlay
+
+
+def stil(ms):
+    mpos.ui.main_display.inactive_ms = ms
+    service.screen_tick()
+
+
+svc, overlay = scherm_opzet(DAG)
+stil(29_000)
+equal("net voor de tijd blijft de app staan", service.screen_state,
+      service.SCHERM_NORMAAL)
+stil(31_000)
+equal("daarna komt de klok", service.screen_state, service.SCHERM_KLOK)
+check("en hij is opgebouwd", overlay.op)
+equal("op de daghelderheid", mpos.io_expander.lcd_brightness, 30)
+equal("het scherm staat niet uit", service.screen_off, False)
+check("en er staat iets op", overlay.updates and overlay.updates[-1][0])
+
+stil(10 * 60 * 1000)
+equal("overdag blijft de klok staan, hoe lang je ook wacht",
+      service.screen_state, service.SCHERM_KLOK)
+
+mpos.ui.main_display.inactive_ms = 0        # een vinger
+service.screen_tick()
+equal("een aanraking brengt de app terug", service.screen_state,
+      service.SCHERM_NORMAAL)
+check("en de klok is weg", not overlay.op)
+equal("op de helderheid van ervoor", mpos.io_expander.lcd_brightness, 100)
+
+# 's Nachts eerst de gedimde klok, daarna alsnog donker. De tweede stap gebruikt
+# dezelfde wachttijd; een vijfde rij op het instelscherm zou niet passen.
+svc, overlay = scherm_opzet(NACHT)
+stil(31_000)
+equal("'s nachts komt dezelfde klok", service.screen_state,
+      service.SCHERM_KLOK)
+equal("maar veel donkerder", mpos.io_expander.lcd_brightness, 5)
+stil(59_000)
+equal("na één keer wachten staat hij er nog", service.screen_state,
+      service.SCHERM_KLOK)
+stil(61_000)
+equal("na twee keer gaat hij uit", service.screen_state, service.SCHERM_UIT)
+equal("en dat is helderheid nul", mpos.io_expander.lcd_brightness, 0)
+equal("screen_off zegt hetzelfde", service.screen_off, True)
+check("de klok is opgeruimd", not overlay.op)
+
+# Met de klok uitgeschakeld gedraagt de badge zich als voorheen.
+svc, overlay = scherm_opzet(DAG, mode="uit")
+stil(31_000)
+equal("zonder klok gaat het scherm gewoon uit", service.screen_state,
+      service.SCHERM_UIT)
+check("en er is nooit een klok gebouwd", overlay.gebouwd == 0)
+
+
+# ===========================================================================
+# De S-knop in het donker
+# ===========================================================================
+# Even kijken hoe laat het is zonder de kamer te verlichten: eerst de klok, bij
+# de tweede druk terug naar waar je was, en anders vanzelf weer donker.
+
+BTN = mpos.board.fri3d_2026.btn_start
+
+
+def druk():
+    """Indrukken en loslaten, zoals een duim dat doet.
+
+    Ook na het loslaten een tik, want de lus draait door en de flank wordt pas
+    herkend als de knop eerst weer omhoog gezien is. Zonder die tweede tik zou
+    een tweede druk in deze test onzichtbaar blijven."""
+    BTN.press()
+    service.screen_tick()
+    BTN.release()
+    service.screen_tick()
+
+
+svc, overlay = scherm_opzet(NACHT)
+stil(10 * 60 * 1000)
+equal("het scherm is uit", service.screen_state, service.SCHERM_UIT)
+
+druk()
+equal("een druk op S toont de klok", service.screen_state, service.SCHERM_KIJK)
+equal("op de nachthelderheid", mpos.io_expander.lcd_brightness, 5)
+check("en de klok staat er", overlay.op)
+
+# De druk reset de inactiviteitsteller net zo goed als een vinger. Zonder dat de
+# knopafhandeling die daling verbruikt, zou de badge nu klaarwakker zijn.
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("de reset van de knop wekt de badge niet", service.screen_state,
+      service.SCHERM_KIJK)
+
+# Een paar seconden later telt een aanraking wel weer. De klok laat een tik door
+# naar de app eronder, dus dan hoort die app ook zichtbaar te worden.
+Clock.advance(3)
+mpos.ui.main_display.inactive_ms = 5_000      # de teller loopt weer op
+service.screen_tick()
+mpos.ui.main_display.inactive_ms = 0          # en dan een vinger
+service.screen_tick()
+equal("later wekt een aanraking hem wel", service.screen_state,
+      service.SCHERM_NORMAAL)
+
+# Terug het donker in, en dan uitkijken tot de klok vanzelf weggaat.
 mpos.ui.main_display.inactive_ms = 10 * 60 * 1000
 service.screen_tick()
-equal("nul betekent nooit uit", service.screen_off, False)
-equal("en de helderheid blijft", mpos.io_expander.lcd_brightness, 100)
-
-service.SCREEN_OFF_S = 30
-mpos.io_expander.lcd_brightness = 40      # iemand zette hem lager
-mpos.ui.main_display.inactive_ms = 29_000
+druk()
+equal("weer even kijken", service.screen_state, service.SCHERM_KIJK)
+Clock.advance(service.KIJK_S + 1)
+mpos.ui.main_display.inactive_ms = 500
 service.screen_tick()
-equal("net voor de tijd blijft het scherm aan", service.screen_off, False)
+equal("na tien seconden gaat hij vanzelf terug uit", service.screen_state,
+      service.SCHERM_UIT)
 
-mpos.ui.main_display.inactive_ms = 31_000
+# En de tweede druk brengt je wel naar de app terug.
+mpos.ui.main_display.inactive_ms = 10 * 60 * 1000
 service.screen_tick()
-equal("na de tijd gaat het uit", service.screen_off, True)
-equal("uit is helderheid nul", mpos.io_expander.lcd_brightness, 0)
+druk()
+equal("weer de klok", service.screen_state, service.SCHERM_KIJK)
+triggers = mpos.ui.main_display.activity_triggers
+druk()
+equal("en nog een druk brengt de app terug", service.screen_state,
+      service.SCHERM_NORMAAL)
+check("met de inactiviteitsteller op nul, anders valt hij meteen weer weg",
+      mpos.ui.main_display.activity_triggers > triggers)
+check("de klok is weg", not overlay.op)
+equal("en het scherm staat weer vol", mpos.io_expander.lcd_brightness, 100)
 
-mpos.ui.main_display.inactive_ms = 0      # een vinger
+# Met het scherm aan hoort S van de badge te zijn en niet van deze service:
+# Pomodoro gebruikt dezelfde knop om te starten.
+svc, overlay = scherm_opzet(NACHT)
+stil(1_000)
+equal("de app staat op het scherm", service.screen_state,
+      service.SCHERM_NORMAAL)
+druk()
+equal("een druk op S verandert daar niets aan", service.screen_state,
+      service.SCHERM_NORMAAL)
+check("en er is geen klok gebouwd", overlay.gebouwd == 0)
+
+# Een badge zonder S-knop mag hier niet op vallen.
+service._knop = False
+equal("geen knop is geen fout", service.knop_flank(), False)
+service._knop = None
+
+
+# ===========================================================================
+# Wat de klok te zien krijgt
+# ===========================================================================
+
+svc, overlay = scherm_opzet(DAG)
+service.battery_pct = 84
+service.weer = {"toestand": "rainy", "nu": 12.4, "max": 15.0, "min": 8.0}
+stil(31_000)
+tijd, datum, batterij, weer, naam = overlay.updates[-1]
+equal("de tijd", tijd, "14:00")
+equal("de datum", datum, "di 18 aug")
+equal("de batterij", batterij, 84)
+equal("en het weer", weer.get("toestand"), "rainy")
+# Wie drie badges in huis heeft wil 's nachts weten naar welke hij kijkt.
+equal("en de naam van de badge, met een hoofdletter", naam, "Alice")
+
+
+# ===========================================================================
+# De helderheid van de app blijft van de app
+# ===========================================================================
+# Een badge die 's nachts op 5 stond hoort niet de volgende ochtend op 5 wakker
+# te worden. Alleen het verlaten van de app-toestand onthoudt een helderheid.
+
+svc, overlay = scherm_opzet(NACHT)
+mpos.io_expander.lcd_brightness = 40      # iemand zette de app lager
+stil(31_000)
+equal("de klok gebruikt zijn eigen waarde", mpos.io_expander.lcd_brightness, 5)
+stil(2 * 60 * 1000)
+equal("en daarna uit", mpos.io_expander.lcd_brightness, 0)
+mpos.ui.main_display.inactive_ms = 0
 service.screen_tick()
-equal("een aanraking wekt het", service.screen_off, False)
-# Een badge die op 40 stond hoort niet op 100 wakker te worden.
-equal("en het komt terug op de helderheid van ervoor",
+equal("terug op de helderheid van de app, niet die van de klok",
       mpos.io_expander.lcd_brightness, 40)
 
 # wake() is wat een app aanroept die iets te melden heeft terwijl het scherm net
 # uit ging. Een bericht op een donkere badge is geen bericht.
-mpos.ui.main_display.inactive_ms = 60_000
-service.screen_tick()
+stil(10 * 60 * 1000)
 equal("scherm uit", service.screen_off, True)
-triggers = mpos.ui.main_display.activity_triggers
 service.wake()
-equal("wake zet het scherm aan", service.screen_off, False)
-check("en reset de inactiviteitsteller",
-      mpos.ui.main_display.activity_triggers > triggers)
+equal("wake haalt de badge uit het donker", service.screen_state,
+      service.SCHERM_NORMAAL)
+equal("en het scherm staat aan", service.screen_off, False)
 
-# Uitzetten van de timeout terwijl het scherm net uit is, moet het aandoen.
-service.SCREEN_OFF_S = 30
-mpos.ui.main_display.inactive_ms = 60_000
-service.screen_tick()
-equal("scherm uit", service.screen_off, True)
+# Zonder timeout gebeurt er niets, hoe lang je ook wacht.
 service.SCREEN_OFF_S = 0
-service.screen_tick()
-equal("timeout op nooit doet het scherm weer aan", service.screen_off, False)
+stil(10 * 60 * 1000)
+equal("nul betekent nooit uit", service.screen_state, service.SCHERM_NORMAAL)
+equal("en de helderheid blijft", mpos.io_expander.lcd_brightness, 40)
+
+# Zonder werkende klok is donker beter dan een verlicht leeg scherm.
+svc, overlay = scherm_opzet(NACHT)
+service._overlay = None
+
+
+class KapotteKlok:
+    def toon(self):
+        raise RuntimeError("geen geheugen")
+
+
+service._overlay = KapotteKlok()
+stil(31_000)
+equal("een klok die niet opkomt wordt donker en geen wit vlak",
+      service.screen_state, service.SCHERM_UIT)
+equal("met de verlichting uit", mpos.io_expander.lcd_brightness, 0)
+service._overlay = None
 
 
 # ===========================================================================
@@ -654,6 +1074,111 @@ check("en load_prefs erna", i_load == i_migrate + 1)
 check("allebei voor de klasse, dus voor een activity iets kan schrijven",
       0 < i_migrate < i_klasse)
 
+
+# ===========================================================================
+# Het klokscherm zelf
+# ===========================================================================
+# bgclock tekent met LVGL en hangt daarom niet in de service. Wat hier getest
+# wordt is dat het gebouwd en weer weggehaald wordt, en dat het niet elke tik
+# opnieuw tekent: dat laatste geeft geflikker op een klok die elke seconde
+# bijgewerkt wordt.
+
+import lvgl as lv                                     # noqa: E402
+import bgclock                                        # noqa: E402
+
+
+class _Toets:
+    """Een LVGL-toetsgebeurtenis, zoals de d-pad hem aanlevert."""
+
+    def __init__(self, toets):
+        self.toets = toets
+
+    def get_key(self):
+        return self.toets
+
+equal("regen is regen", bgclock.icoon_soort("pouring"), "regen")
+equal("onweer telt als regen", bgclock.icoon_soort("lightning-rainy"), "regen")
+equal("sneeuw ook", bgclock.icoon_soort("snowy"), "regen")
+equal("een heldere hemel is zon", bgclock.icoon_soort("sunny"), "zon")
+equal("en \'s nachts ook", bgclock.icoon_soort("clear-night"), "zon")
+equal("al de rest is bewolkt", bgclock.icoon_soort("partlycloudy"), "bewolkt")
+equal("iets onbekends is ook maar bewolkt",
+      bgclock.icoon_soort("exceptional"), "bewolkt")
+equal("zonder toestand geen pictogram", bgclock.icoon_soort(None), None)
+
+equal("een temperatuur zoals je hem zegt", bgclock.graden(12.4), "12\u00b0")
+equal("en afgerond", bgclock.graden(12.6), "13\u00b0")
+equal("onder nul ook", bgclock.graden(-3.2), "-3\u00b0")
+equal("niets is niets", bgclock.graden(None), "")
+equal("en onzin ook", bgclock.graden("unavailable"), "")
+
+# De niet-brandende segmenten staan uit en niet op een schaduw. Pomodoro zet ze
+# op 18 zodat het op een echt display lijkt; hier is dat vijfendertig lampjes
+# die \'s nachts licht geven voor de sier.
+equal("een gedoofd segment geeft geen licht", bgclock.SEGMENT_UIT, 0)
+
+laag = lv.layer_top()
+kinderen = len(laag.children)
+klok = bgclock.ClockOverlay()
+check("een klok die nooit getoond is kost niets", not klok.zichtbaar())
+equal("en hangt nergens", len(laag.children), kinderen)
+
+klok.toon()
+check("tonen bouwt hem op", klok.zichtbaar())
+equal("in de laag boven alles", len(laag.children), kinderen + 1)
+
+check("de eerste keer wordt er getekend",
+      klok.werk_bij("07:16", "ma 17 aug", 84,
+                    {"toestand": "rainy", "nu": 12.4, "max": 15, "min": 8}))
+check("dezelfde inhoud tekent niet opnieuw",
+      not klok.werk_bij("07:16", "ma 17 aug", 84,
+                        {"toestand": "rainy", "nu": 12.4, "max": 15, "min": 8}))
+check("een minuut later wel",
+      klok.werk_bij("07:17", "ma 17 aug", 84,
+                    {"toestand": "rainy", "nu": 12.4, "max": 15, "min": 8}))
+check("en een ander weerbericht ook",
+      klok.werk_bij("07:17", "ma 17 aug", 84, {"toestand": "sunny"}))
+check("zonder weerbericht valt er niets om over te struikelen",
+      klok.werk_bij("07:18", "ma 17 aug", 84, {}))
+check("zonder batterij evenmin",
+      klok.werk_bij("07:19", "ma 17 aug", None, None))
+check("de naam hoort erbij en verandert het scherm",
+      klok.werk_bij("07:19", "ma 17 aug", None, None, "Badkamer"))
+check("en dezelfde naam tekent niet opnieuw",
+      not klok.werk_bij("07:19", "ma 17 aug", None, None, "Badkamer"))
+
+# X en B regelen de helderheid zolang de klok staat. Zonder de focus af te pakken
+# lopen die toetsen door naar de app eronder, die dan onzichtbaar door een lijst
+# scrolt terwijl jij denkt dat je de klok dimt.
+stappen = []
+toetsklok = bgclock.ClockOverlay(op_toets=lambda d: stappen.append(d))
+toetsklok.toon()
+check("de klok zit in de focusgroep",
+      toetsklok.root in lv.group_get_default().objects)
+check("en heeft de focus",
+      lv.group_get_default().get_focused() is toetsklok.root)
+toetsklok._toets(_Toets(bgclock.KEY_UP))
+toetsklok._toets(_Toets(bgclock.KEY_DOWN))
+toetsklok._toets(_Toets(bgclock.KEY_UP))
+equal("X is feller en B is donkerder", stappen, [1, -1, 1])
+toetsklok._toets(_Toets(27))
+equal("een andere toets doet niets", stappen, [1, -1, 1])
+
+# De focus hoort terug te gaan naar waar hij stond, anders staat de app eronder
+# zonder toetsenbord zodra de klok weg is.
+toetsklok.weg()
+check("de klok is uit de focusgroep",
+      toetsklok.root is None and
+      lv.group_get_default().get_focused() is not toetsklok)
+
+klok.weg()
+check("weghalen laat niets staan", not klok.zichtbaar())
+equal("en de laag is weer zoals hij was", len(laag.children), kinderen)
+check("bijwerken zonder scherm is geen fout",
+      not klok.werk_bij("07:20", "ma 17 aug", 84, {}))
+klok.toon()
+check("en opnieuw tonen bouwt hem gewoon weer op", klok.zichtbaar())
+klok.weg()
 
 # ===========================================================================
 

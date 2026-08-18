@@ -14,6 +14,11 @@ sier.
 
 De helderheid regelt de achtergrondverlichting, niet dit scherm. Hier is alles
 wit op zwart, en hoe donker dat wordt bepaalt `badge_service`.
+
+Zolang de klok staat pakt hij de focus van het toetsenbord af, zodat X en B de
+helderheid regelen in plaats van door te lopen naar de app eronder. Bij het
+weghalen gaat de focus terug naar waar hij stond. Aanrakingen gaan wel gewoon
+door: de overlay is niet aanklikbaar, en een tik hoort de app eronder te wekken.
 """
 
 import lvgl as lv
@@ -36,6 +41,9 @@ def _const(*spellings, **kw):
 
 SCROLL_OFF = _const("SCROLLBAR_MODE.OFF", default=0)
 CLICKABLE = _const("obj.FLAG.CLICKABLE", "OBJ_FLAG_CLICKABLE")
+EVENT_KEY = _const("EVENT.KEY", "EVENT_KEY")
+KEY_UP = _const("KEY.UP", "KEY_UP", default=17)
+KEY_DOWN = _const("KEY.DOWN", "KEY_DOWN", default=18)
 
 COL_ACHTERGROND = 0x000000
 COL_TIJD = 0xFFFFFF
@@ -81,6 +89,10 @@ class _Digit:
             part.set_style_border_width(0, 0)
             part.set_style_radius(1, 0)
             part.set_style_pad_all(0, 0)
+            # Meteen doven. Zonder dit staan er tot de eerste set() achtentwintig
+            # rechthoeken in de themakleur op het scherm, en dat is precies het
+            # licht waar dit scherm voor bestaat om het niet te geven.
+            part.set_style_bg_opa(SEGMENT_UIT, 0)
             try:
                 part.set_scrollbar_mode(SCROLL_OFF)
             except Exception:
@@ -127,6 +139,7 @@ class _Klok:
             dot.set_style_border_width(0, 0)
             dot.set_style_radius(1, 0)
             dot.set_style_pad_all(0, 0)
+            dot.set_style_bg_opa(0, 0)
             try:
                 dot.set_scrollbar_mode(SCROLL_OFF)
             except Exception:
@@ -230,9 +243,14 @@ class ClockOverlay:
     Bouwt zichzelf pas bij de eerste keer tonen. Een badge die dit nooit gebruikt
     betaalt er dan ook geen geheugen voor."""
 
-    def __init__(self):
+    def __init__(self, op_toets=None):
+        # op_toets(delta) krijgt +1 voor X en -1 voor B. De klok weet niet wat
+        # er dan gebeurt; dat is aan wie hem toont.
+        self.op_toets = op_toets
+        self._vorige_focus = None
         self.root = None
         self.klok = None
+        self.naam = None
         self.datum = None
         self.batterij = None
         self.icoon = None
@@ -267,7 +285,20 @@ class ClockOverlay:
                 except Exception:
                     pass
 
-        self.klok = _Klok(self.root, 0, 16, 320, 104)
+        # De naam bovenaan, klein en gedimd. Wie drie badges in huis heeft wil
+        # 's nachts weten naar welke hij kijkt, en het is de enige tekst op dit
+        # scherm die niet elke minuut verandert.
+        self.naam = lv.label(self.root)
+        self.naam.set_pos(0, 2)
+        self.naam.set_width(320)
+        try:
+            self.naam.set_style_text_align(lv.TEXT_ALIGN.CENTER, 0)
+        except Exception:
+            pass
+        self.naam.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
+        self.naam.set_text("")
+
+        self.klok = _Klok(self.root, 0, 22, 320, 100)
 
         self.datum = lv.label(self.root)
         self.datum.set_pos(14, 128)
@@ -295,6 +326,57 @@ class ClockOverlay:
         self.bereik.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
         self.bereik.set_text("")
 
+        self._pak_focus()
+
+    def _pak_focus(self):
+        """X en B naar hier halen zolang de klok staat.
+
+        De badge stuurt zijn d-pad naar het object dat focus heeft in de
+        standaardgroep. Zonder dit lopen X en B door naar de app eronder, die
+        onzichtbaar door een lijst zou scrollen terwijl jij denkt dat je de klok
+        dimt. Wie de focus had wordt onthouden en krijgt hem terug."""
+        if self.op_toets is None or EVENT_KEY is None:
+            return False
+        try:
+            groep = lv.group_get_default()
+            if not groep:
+                return False
+            self._vorige_focus = groep.get_focused()
+            groep.add_obj(self.root)
+            lv.group_focus_obj(self.root)
+            self.root.add_event_cb(self._toets, EVENT_KEY, None)
+            return True
+        except Exception as e:
+            print("klok: geen toetsen:", e)
+            return False
+
+    def _toets(self, event):
+        try:
+            toets = event.get_key()
+        except Exception:
+            return
+        if toets == KEY_UP:
+            delta = 1
+        elif toets == KEY_DOWN:
+            delta = -1
+        else:
+            return
+        try:
+            self.op_toets(delta)
+        except Exception as e:
+            print("klok: toets gooide:", e)
+
+    def _geef_focus_terug(self):
+        # Het verwijderen van de root haalt hem ook uit de groep; alleen de
+        # focus moet terug, anders staat de app eronder zonder.
+        vorige, self._vorige_focus = self._vorige_focus, None
+        if vorige is None:
+            return
+        try:
+            lv.group_focus_obj(vorige)
+        except Exception as e:
+            print("klok: focus niet terug te geven:", e)
+
     # --- tonen en weghalen -------------------------------------------------
 
     def zichtbaar(self):
@@ -313,14 +395,16 @@ class ClockOverlay:
             self.root.delete()
         except Exception:
             pass
+        self._geef_focus_terug()
         self.root = None
         self.klok = None
+        self.naam = None
         self._getoond = ""
         return True
 
     # --- inhoud ------------------------------------------------------------
 
-    def werk_bij(self, tijd, datum, batterij, weer):
+    def werk_bij(self, tijd, datum, batterij, weer, naam=""):
         """Alles wat op het scherm staat in een keer.
 
         Vergelijkt eerst of er iets veranderd is: dit draait elke seconde, en
@@ -331,14 +415,15 @@ class ClockOverlay:
         nu = (weer or {}).get("nu")
         hoog = (weer or {}).get("max")
         laag = (weer or {}).get("min")
-        sleutel = "%s|%s|%s|%s|%s|%s" % (tijd, datum, batterij, soort, nu,
-                                         "%s/%s" % (hoog, laag))
+        sleutel = "%s|%s|%s|%s|%s|%s|%s" % (tijd, datum, batterij, soort, nu,
+                                            "%s/%s" % (hoog, laag), naam)
         if sleutel == self._getoond:
             return False
         self._getoond = sleutel
 
         if tijd and self.klok is not None:
             self.klok.set_time(tijd, COL_TIJD)
+        self.naam.set_text(naam or "")
         self.datum.set_text(datum or "")
         self.batterij.set_text("%d%%" % batterij if batterij is not None else "")
         self.icoon.set(soort)

@@ -1,0 +1,60 @@
+# Het weerbericht naar de badges sturen.
+#
+# De badge vraagt niets op. Home Assistant publiceert één retained bericht op
+# een topic dat los staat van de naam van de badge, en elke badge die een klok
+# toont leest hetzelfde bericht. Retained, zodat een badge die om drie uur 's
+# nachts herstart meteen weer iets te tonen heeft in plaats van te wachten tot
+# de volgende update.
+#
+# Plak dit in configuration.yaml, of in automations.yaml zonder de eerste regel.
+# Vervang weather.forecast_home door je eigen weerentiteit.
+#
+# Het topic staat in be.weyn.badge/badge_config.py als WEER_TOPIC en is
+# standaard home/badges/weer.
+
+automation:
+  - alias: Weerbericht naar de badges
+    description: >
+      Publiceert conditie, huidige temperatuur en de max en min van vandaag op
+      MQTT, waar de klok op de Fri3d-badges hem leest.
+    mode: single
+    triggers:
+      # Elk half uur is ruim genoeg voor een klok, en bij het opstarten meteen
+      # zodat een verse Home Assistant de badges niet zonder weer laat zitten.
+      - trigger: time_pattern
+        minutes: "/30"
+      - trigger: homeassistant
+        event: start
+    actions:
+      # get_forecasts is de enige manier om aan de max en min van vandaag te
+      # komen: die staan niet in de attributen van de entiteit zelf.
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: voorspelling
+      - variables:
+          vandaag: "{{ voorspelling['weather.forecast_home'].forecast[0] }}"
+      - action: mqtt.publish
+        data:
+          topic: home/badges/weer
+          retain: true
+          payload: >-
+            {{ {
+              "toestand": vandaag.condition,
+              "nu": state_attr('weather.forecast_home', 'temperature'),
+              "max": vandaag.temperature,
+              "min": vandaag.templow
+            } | to_json }}
+
+# De badge kent drie pictogrammen en vertaalt de conditie zelf:
+#
+#   zon      sunny, clear, clear-night
+#   regen    rainy, pouring, snowy, snowy-rainy, hail, lightning,
+#            lightning-rainy
+#   bewolkt  al de rest
+#
+# Ontbrekende velden zijn geen fout. Een bericht met alleen "toestand" geeft een
+# klok met een pictogram en geen temperaturen; een bericht dat geen geldige JSON
+# is wordt genegeerd en laat het vorige staan.

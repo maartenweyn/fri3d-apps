@@ -10,7 +10,8 @@ niets met een enkele app te maken hebben:
      sprekend op een haperend netwerk.
   2. **Wie deze badge is.** De naam, het toestel-id uit het MAC, de topics, en
      wat Home Assistant erover te horen krijgt: batterij, spanning, signaal.
-  3. **Het scherm.** Uit na een tijd niets doen, en wakker bij aanraking.
+  3. **Het scherm.** Uit of een gedimde klok na een tijd niets doen, wakker bij
+     aanraking, en 's nachts donkerder dan overdag.
 
 Andere apps praten hier tegen. Ze mogen niet `import badge_service` doen: de
 map van deze app staat niet op `sys.path` van een andere app. Alle apps draaien
@@ -31,7 +32,9 @@ badge zit in het topic, dus wie zich op `home/badges/alice/msg` abonneert hoort
 niets meer zodra de badge `bob` heet. Wie zich op `"msg"` abonneert wordt bij
 een hernoeming automatisch opnieuw ingeschreven.
 
-Niets hier maakt LVGL-objecten aan: een service heeft geen scherm.
+Niets hier maakt LVGL-objecten aan: een service heeft geen scherm. Het
+klokscherm is de uitzondering die de regel bewaakt: dat staat in `bgclock.py`,
+en dat bouwt zijn widgets pas bij de eerste keer tonen.
 """
 
 import json
@@ -60,6 +63,21 @@ Service = _mpos("Service", "mpos.app.service")
 TaskManager = _mpos("TaskManager", "mpos.task_manager")
 SharedPreferences = _mpos("SharedPreferences", "mpos.config")
 
+# Het klokscherm hier importeren en niet pas als het nodig is. Een service draait
+# met `sys.path` op ['lib', '', '.frozen', '/lib'] en cwd op '/', en de map van
+# deze app staat daar niet in: een `import bgclock` om drie uur 's nachts geeft
+# ImportError. Bij het importeren van deze module werkt het wel, want dan laadt
+# het OS de app en is zijn map bereikbaar. Op de badge gemeten, niet aangenomen.
+#
+# Dit importeert LVGL in een service, en dat blijft de uitzondering: bgclock
+# maakt pas objecten aan bij de eerste keer tonen, dus een badge die nooit een
+# klok laat zien betaalt er geen geheugen voor.
+try:
+    import bgclock as _bgclock
+except Exception as _e:
+    _bgclock = None
+    print("badge: klokscherm niet te laden:", _e)
+
 APP_FULLNAME = "tech.weyn.badgecontroller"
 PREFS_APP_ID = APP_FULLNAME
 
@@ -76,6 +94,15 @@ TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
 DISCOVERY_PREFIX = "homeassistant"
 SCREEN_OFF_S = 0          # 0 betekent: nooit uit
 DEBUG_LED = 0             # helderheid van het debug-lampje op de expander
+
+# Wat er na SCREEN_OFF_S gebeurt: "uit" is donker, "klok" laat een gedimde klok
+# staan. 's Nachts gaat de klok eerst nog verder omlaag en daarna alsnog uit.
+IDLE_MODE = "uit"
+CLOCK_DAY = 30            # helderheid van de klok overdag
+CLOCK_NIGHT = 5           # en 's nachts
+NIGHT_FROM = 23           # het nachtvenster, in hele uren lokale tijd
+NIGHT_TO = 7              # van == tot betekent: geen nacht
+WEER_TOPIC = "home/badges/weer"
 CONFIG_OK = False
 
 try:
@@ -89,6 +116,12 @@ try:
     DISCOVERY_PREFIX = getattr(_cfg, "DISCOVERY_PREFIX", DISCOVERY_PREFIX)
     SCREEN_OFF_S = getattr(_cfg, "SCREEN_OFF_S", SCREEN_OFF_S)
     DEBUG_LED = getattr(_cfg, "DEBUG_LED", DEBUG_LED)
+    IDLE_MODE = getattr(_cfg, "IDLE_MODE", IDLE_MODE)
+    CLOCK_DAY = getattr(_cfg, "CLOCK_DAY", CLOCK_DAY)
+    CLOCK_NIGHT = getattr(_cfg, "CLOCK_NIGHT", CLOCK_NIGHT)
+    NIGHT_FROM = getattr(_cfg, "NIGHT_FROM", NIGHT_FROM)
+    NIGHT_TO = getattr(_cfg, "NIGHT_TO", NIGHT_TO)
+    WEER_TOPIC = getattr(_cfg, "WEER_TOPIC", WEER_TOPIC)
     CONFIG_OK = True
 except ImportError:
     print("badge: geen badge_config.py, standaardwaarden")
@@ -106,6 +139,16 @@ PING_EVERY = 20          # keepalive is 60 s; ping ruim daarbinnen
 SOCKET_TIMEOUT = 5       # laat een dode broker nooit de LVGL-thread ophouden
 TICK = 0.5
 
+# De lus draait sneller dan hij pompt, want de S-knop wordt gepolst en niet op
+# een interrupt gelezen. Een halve seconde tussen twee metingen laat een korte
+# druk wegvallen; een tiende niet. Pompen blijft op TICK: check_msg en ping
+# hebben niets aan tien keer per seconde.
+LUS_TICK = 0.1
+
+# Hoe lang de klok blijft staan na een druk op S in het donker. Kort genoeg dat
+# een blik op het uur geen kamerverlichting wordt.
+KIJK_S = 10
+
 # Hoe vaak de badge zijn batterij meldt. Een cel loopt over uren leeg; elke paar
 # seconden meten geeft alleen radioverkeer en ruis op een grafiek.
 STATE_EVERY = 300
@@ -117,6 +160,17 @@ battery_pct = None
 battery_volt = None
 wifi_rssi = None
 screen_off = False
+
+# De schermtoestand. NORMAAL is de app zoals hij is, KLOK is de gedimde klok
+# over alles heen, UIT is donker, en KIJK is de klok na een druk op S in het
+# donker: even kijken hoe laat het is, en vanzelf weer weg.
+SCHERM_NORMAAL = "normaal"
+SCHERM_KLOK = "klok"
+SCHERM_UIT = "uit"
+SCHERM_KIJK = "kijk"
+
+screen_state = SCHERM_NORMAAL
+weer = {}                # het laatst ontvangen weerbericht, leeg tot er een is
 
 _service = None
 _subscribers = {}        # achtervoegsel -> callback(topic:str, payload:bytes)
@@ -357,6 +411,7 @@ def load_prefs():
     hij belde, dus het een of het ander wijzigen zonder opnieuw te verbinden
     laat de badge zitten terwijl hij er goed uitziet en niets hoort."""
     global MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS, SCREEN_OFF_S, DEBUG_LED
+    global IDLE_MODE, CLOCK_DAY, CLOCK_NIGHT, NIGHT_FROM, NIGHT_TO
     name = BADGE_NAME
     before = (MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS)
     try:
@@ -370,6 +425,11 @@ def load_prefs():
         MQTT_PASS = prefs.get_string("mqtt_pass", MQTT_PASS or "") or None
         SCREEN_OFF_S = prefs.get_int("screen_off_s", SCREEN_OFF_S)
         DEBUG_LED = prefs.get_int("debug_led", DEBUG_LED)
+        IDLE_MODE = prefs.get_string("idle_mode", IDLE_MODE) or IDLE_MODE
+        CLOCK_DAY = prefs.get_int("clock_day", CLOCK_DAY)
+        CLOCK_NIGHT = prefs.get_int("clock_night", CLOCK_NIGHT)
+        NIGHT_FROM = prefs.get_int("night_from", NIGHT_FROM)
+        NIGHT_TO = prefs.get_int("night_to", NIGHT_TO)
     except Exception as e:
         print("badge: kon voorkeuren niet lezen:", e)
 
@@ -441,7 +501,7 @@ def wake():
 
     Voor een app die iets te melden heeft terwijl het scherm net uit ging: een
     bericht dat binnenkomt op een donkere badge is geen bericht."""
-    _screen_set(True)
+    scherm_zet(SCHERM_NORMAAL)
     try:
         _display().trigger_activity()
         return True
@@ -475,16 +535,16 @@ def posix_zone():
     return TIMEZONE
 
 
-def clock_text(epoch):
-    """De tijd zoals een keukenklok hem toont, of "" als hij niet te vertrouwen is.
+def local_parts(epoch):
+    """Een tijdstip uiteengelegd in lokale tijd, of None.
 
     De badge houdt zijn klok in UTC en `time.localtime()` geeft UTC terug, ook
     met de tijdzone op Europe/Brussels, dus een naïeve uitlezing zit er in de
     zomer twee uur naast. Een verkeerde tijd onder "Eten over 10 minuten" is
     erger dan geen tijd: reken om via de POSIX-zone, en geef op in plaats van te
-    gokken."""
+    gokken. None betekent hier dus echt: ik weet het niet."""
     if not epoch:
-        return ""
+        return None
     parts = None
     try:
         import mpos.time
@@ -494,12 +554,81 @@ def clock_text(epoch):
             import time as _time
             parts = _time.localtime(epoch)
         except Exception:
-            return ""
-    if parts is None or len(parts) < 5:
-        return ""
+            return None
+    if parts is None or len(parts) < 6:
+        return None
     if parts[0] < 2024:          # klok nooit gesynchroniseerd, verzin geen tijd
+        return None
+    return parts
+
+
+def nu_epoch():
+    """Nu, in de telling die local_parts verwacht.
+
+    Dat is `time.time()` en niet `mpos.time.epoch_seconds()`. Die twee tellen
+    niet vanaf hetzelfde punt: MicroPython telt vanaf 2000 en `epoch_seconds()`
+    geeft Unix-seconden terug. Het verschil is 946684800, en dat is precies
+    10957 hele dagen. Daardoor klopte het uur wel en de datum niet: de badge zei
+    donderdag 17 augustus terwijl het dinsdag de 18e was, en de test zag er
+    niets van omdat die zijn tijdstippen zelf aanlevert.
+
+    Een eigen functie zodat een test hem kan vervangen; de klok van een badge is
+    niet iets waar een test op wil wachten."""
+    try:
+        return int(time.time())
+    except Exception:
+        return 0
+
+
+def clock_text(epoch):
+    """De tijd zoals een keukenklok hem toont, of "" als hij niet te vertrouwen is."""
+    parts = local_parts(epoch)
+    if parts is None:
         return ""
     return "%02d:%02d" % (parts[3], parts[4])
+
+
+DAGEN = ("ma", "di", "wo", "do", "vr", "za", "zo")
+MAANDEN = ("jan", "feb", "mrt", "apr", "mei", "jun",
+           "jul", "aug", "sep", "okt", "nov", "dec")
+
+
+def date_text(epoch):
+    """"di 18 aug", of "" als de klok niet gezet is.
+
+    Kort en in kleine letters, want dit staat onder een klok en niet in een
+    brief."""
+    parts = local_parts(epoch)
+    if parts is None:
+        return ""
+    dag = DAGEN[parts[6] % 7] if len(parts) > 6 else ""
+    maand = MAANDEN[(parts[1] - 1) % 12]
+    return ("%s %d %s" % (dag, parts[2], maand)).strip()
+
+
+def is_night(epoch, van=None, tot=None):
+    """Valt dit tijdstip in het nachtvenster?
+
+    Het venster loopt bijna altijd over middernacht heen, dus 23 tot 7 betekent
+    23, 0, 1 ... 6 en niet niets. Van gelijk aan tot is hoe je zegt dat er geen
+    nacht is; een venster van nul uur en een venster van vierentwintig uur zijn
+    dezelfde twee getallen, en de eerste lezing is de veilige."""
+    van = NIGHT_FROM if van is None else van
+    tot = NIGHT_TO if tot is None else tot
+    try:
+        van = int(van) % 24
+        tot = int(tot) % 24
+    except (TypeError, ValueError):
+        return False
+    if van == tot:
+        return False
+    parts = local_parts(epoch)
+    if parts is None:
+        return False
+    uur = parts[3]
+    if van < tot:
+        return van <= uur < tot
+    return uur >= van or uur < tot
 
 
 # --- telemetrie -------------------------------------------------------------
@@ -590,6 +719,68 @@ def discovery_payloads():
     return out
 
 
+# --- het weer ---------------------------------------------------------------
+# Home Assistant weet wat voor weer het wordt en de badge niet. Eén retained
+# bericht op een gedeeld topic is genoeg: de badge hoeft dan niets op te vragen,
+# heeft na een herstart meteen weer iets te tonen, en tien badges lezen hetzelfde
+# bericht. Het topic staat los van de naam van de badge, want het weer ook.
+
+WEER_VELDEN = (
+    ("toestand", ("toestand", "state", "condition", "weer")),
+    ("nu", ("nu", "now", "temp", "temperature", "current")),
+    ("max", ("max", "high", "temp_max", "temperature_max")),
+    ("min", ("min", "low", "templow", "temp_min", "temperature_min")),
+)
+
+
+def parse_weer(payload):
+    """Een weerbericht uit MQTT, of {} als er niets bruikbaars in staat.
+
+    Ruim in wat het accepteert: dit komt uit een template in andermans
+    configuratie, en een sjabloon dat één keer null oplevert mag geen lege klok
+    geven. Elk veld apart: een ontbrekende maximumtemperatuur is geen reden om
+    de rest weg te gooien."""
+    if isinstance(payload, (bytes, bytearray)):
+        try:
+            payload = payload.decode("utf-8")
+        except Exception:
+            return {}
+    if isinstance(payload, str):
+        payload = payload.strip()
+        if not payload:
+            return {}
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            return {}
+    if not isinstance(payload, dict):
+        return {}
+    uit = {}
+    for naam, sleutels in WEER_VELDEN:
+        for sleutel in sleutels:
+            if sleutel not in payload:
+                continue
+            waarde = payload[sleutel]
+            if waarde is None or waarde == "":
+                continue
+            if naam == "toestand":
+                uit[naam] = str(waarde)
+            else:
+                try:
+                    uit[naam] = float(waarde)
+                except (TypeError, ValueError):
+                    continue
+            break
+    return uit
+
+
+def _on_weer(topic_str, payload):
+    global weer
+    nieuw = parse_weer(payload)
+    if nieuw:
+        weer = nieuw
+
+
 # --- scherm -----------------------------------------------------------------
 # MicroPythonOS heeft geen schermtimeout en geen helderheidsinstelling; de
 # Settings-app is uitgepakt en nagekeken. De onderdelen bestaan wel, alleen niet
@@ -617,13 +808,27 @@ def _brightness_now():
         return None
 
 
-_bright_saved = None
+_bright_saved = None     # de helderheid van de app, van voor de klok of het uit
+
+
+def _onthoud_helderheid():
+    """Bewaren waar de gebruiker het scherm op had staan.
+
+    Alleen bij het verlaten van NORMAAL. Zou de klokhelderheid hier ook in
+    belanden, dan wordt een badge die 's nachts op 5 stond de volgende ochtend
+    op 5 wakker, en dan lijkt hij stuk."""
+    global _bright_saved
+    huidig = _brightness_now()
+    if huidig:
+        _bright_saved = huidig
 
 
 def _screen_set(aan):
-    """Scherm aan of uit. Onthoudt de helderheid van voor het uitgaan, zodat een
-    badge die op 40 stond niet op 100 wakker wordt."""
-    global screen_off, _bright_saved
+    """De achtergrondverlichting aan of uit, zonder verdere toestand.
+
+    Blijft bestaan omdat het scherm op meer dan één manier uit kan gaan, maar
+    wie een overgang wil hoort scherm_zet() te gebruiken."""
+    global screen_off
     if aan:
         if not screen_off:
             return False
@@ -632,13 +837,255 @@ def _screen_set(aan):
         return True
     if screen_off:
         return False
-    huidig = _brightness_now()
-    if huidig:
-        _bright_saved = huidig
     if not _brightness(0):
         return False
     screen_off = True
     return True
+
+
+# De trappen waarlangs de klokhelderheid loopt. Ze staan hier en niet in het
+# instelscherm, want de knoppen X en B lopen er ook langs en die worden hier
+# afgehandeld. Overdag hoeft de klok niet fel: je staat ernaast als je hem leest.
+# 's Nachts wel echt laag, want het verschil tussen 1 en 5 procent is in een
+# donkere slaapkamer het verschil tussen een klok en een lamp.
+KLOK_DAG_NIVEAUS = (10, 20, 30, 50, 75, 100)
+KLOK_NACHT_NIVEAUS = (1, 2, 3, 5, 10, 20, 30, 50)
+
+
+def stap(waarden, huidig, delta):
+    """Een stap door een vaste reeks, zonder om te slaan.
+
+    Omslaan van uit naar honderd met een misgetikte plus is precies wat je in
+    een donkere kamer niet wil. Staat de huidige waarde niet in de reeks, dan
+    wordt eerst de dichtstbijzijnde gezocht: wat in de voorkeuren staat kan uit
+    een configbestand komen of van een oudere versie."""
+    try:
+        index = waarden.index(huidig)
+    except ValueError:
+        index = 0
+        afstand = None
+        for i, kandidaat in enumerate(waarden):
+            try:
+                d = abs(kandidaat - huidig)
+            except TypeError:
+                continue
+            if afstand is None or d < afstand:
+                afstand = d
+                index = i
+    return waarden[min(len(waarden) - 1, max(0, index + delta))]
+
+
+def klok_niveau_stap(delta):
+    """De klok een trapje feller of donkerder, en onthouden.
+
+    X is omhoog en B is omlaag, en ze werken alleen terwijl de klok op het scherm
+    staat. Welke van de twee waarden je bijstelt hangt af van waar je bent: 's
+    nachts de nachtwaarde, overdag de dagwaarde. Zo dim je de klok vanuit bed en
+    staat hij morgenavond meteen goed."""
+    global CLOCK_DAY, CLOCK_NIGHT, _vorige_stil, _kijk_tot
+    nacht = is_night(nu_epoch())
+    if nacht:
+        CLOCK_NIGHT = stap(KLOK_NACHT_NIVEAUS, CLOCK_NIGHT, delta)
+        sleutel, waarde = "clock_night", CLOCK_NIGHT
+    else:
+        CLOCK_DAY = stap(KLOK_DAG_NIVEAUS, CLOCK_DAY, delta)
+        sleutel, waarde = "clock_day", CLOCK_DAY
+    _klok_licht(nacht)
+
+    # Een toets reset de inactiviteitsteller net zo goed als een vinger. Zonder
+    # dit zou de badge klaarwakker worden op de druk waarmee je hem juist wilde
+    # dimmen. Dezelfde truc als bij de S-knop: de daling hier verbruiken, zodat
+    # de volgende tik er geen aanraking meer in ziet.
+    _vorige_stil = 0
+    if screen_state == SCHERM_KIJK:
+        # Wie aan de helderheid draait is aan het kijken.
+        _kijk_tot = _seconden() + KIJK_S
+    try:
+        SharedPreferences(PREFS_APP_ID).edit().put_int(sleutel, waarde).commit()
+    except Exception as e:
+        print("badge: klokhelderheid niet bewaard:", e)
+    return waarde
+
+
+def klok_helderheid(nacht):
+    """Hoe fel de klok mag staan. Nooit nul: dat is uit en niet een klok."""
+    niveau = CLOCK_NIGHT if nacht else CLOCK_DAY
+    try:
+        niveau = int(niveau)
+    except (TypeError, ValueError):
+        niveau = 5
+    return max(1, min(100, niveau))
+
+
+# De overlay wordt pas gemaakt als iemand hem voor het eerst nodig heeft, en
+# leeft in bgclock omdat dit bestand geen LVGL aanraakt. Een service hoort geen
+# scherm te hebben; de klok is de ene uitzondering, en die staat daarom apart.
+_overlay = None
+_klok_seconde = None
+_klok_bright = None      # wat er als laatste naar de expander geschreven is
+
+
+def _klok_licht(nacht):
+    """De klokhelderheid zetten, en alleen als hij verandert.
+
+    De lus draait tien keer per seconde. Elke keer dezelfde waarde over I2C naar
+    de expander schrijven is tien keer per seconde busverkeer voor niets, en het
+    houdt de bus bezet voor wie er wel iets te zeggen heeft."""
+    global _klok_bright
+    niveau = klok_helderheid(nacht)
+    if niveau == _klok_bright:
+        return False
+    _klok_bright = niveau
+    return _brightness(niveau)
+
+
+def _klok_toon(nacht):
+    global _overlay
+    if _overlay is None:
+        if _bgclock is None:
+            return False
+        try:
+            _overlay = _bgclock.ClockOverlay(op_toets=klok_niveau_stap)
+        except Exception as e:
+            print("badge: klokscherm niet beschikbaar:", e)
+            return False
+    global screen_off
+    try:
+        _overlay.toon()
+    except Exception as e:
+        print("badge: klok niet te tonen:", e)
+        return False
+    _klok_licht(nacht)
+    screen_off = False
+    return True
+
+
+def _klok_weg():
+    # De seconde en de helderheid vergeten, anders slaat de eerste update na het
+    # opnieuw tonen over en staat er een lege klok tot de minuut verspringt.
+    global _klok_seconde, _klok_bright
+    _klok_seconde = None
+    _klok_bright = None
+    if _overlay is None:
+        return False
+    try:
+        return _overlay.weg()
+    except Exception as e:
+        print("badge: klok niet weg te halen:", e)
+        return False
+
+
+def _klok_bijwerken():
+    """De klok bijwerken, hoogstens één keer per seconde.
+
+    De lus draait tien keer per seconde voor de knop. Elke keer de tijdzone
+    omrekenen en twee strings opbouwen voor een klok die minuten toont is werk
+    dat een ESP32 beter niet doet."""
+    global _klok_seconde
+    if _overlay is None:
+        return False
+    epoch = nu_epoch()
+    if epoch == _klok_seconde:
+        return False
+    _klok_seconde = epoch
+    try:
+        return _overlay.werk_bij(clock_text(epoch), date_text(epoch),
+                                 battery_pct, weer, titlecase(BADGE_NAME))
+    except Exception as e:
+        print("badge: klok niet bij te werken:", e)
+        return False
+
+
+def scherm_zet(nieuw, nacht=False):
+    """De enige plek waar de schermtoestand verandert."""
+    global screen_state
+    if nieuw == screen_state:
+        if nieuw in (SCHERM_KLOK, SCHERM_KIJK):
+            # De klok blijft staan terwijl het nacht wordt: dan hoort hij mee te
+            # dimmen zonder dat er een toestand verandert.
+            _klok_licht(nacht)
+        return False
+    vorig = screen_state
+    screen_state = nieuw
+    if vorig == SCHERM_NORMAAL:
+        _onthoud_helderheid()
+    if nieuw == SCHERM_NORMAAL:
+        _klok_weg()
+        if screen_off:
+            _screen_set(True)
+        else:
+            _brightness(_bright_saved if _bright_saved else 100)
+    elif nieuw == SCHERM_UIT:
+        _klok_weg()
+        _screen_set(False)
+    else:
+        if not _klok_toon(nacht):
+            # Zonder klok is dit gewoon donker; een verlicht leeg scherm is het
+            # slechtste van de twee.
+            screen_state = SCHERM_UIT
+            _screen_set(False)
+            return True
+        _klok_bijwerken()
+    return True
+
+
+# --- de S-knop --------------------------------------------------------------
+# Gepolst en niet op een interrupt: de firmware leest deze pin zelf ook uit voor
+# het toetsenbord, en er een irq bij hangen is een risico voor iets dat elke app
+# gebruikt. Lezen is dat niet.
+
+_knop = None
+_knop_vorige = 1
+
+
+def _knop_pin():
+    """Het pinobject van de S-knop, of None op een badge die hem niet aanbiedt."""
+    global _knop
+    if _knop is not None:
+        return _knop or None
+    _knop = False
+    try:
+        import mpos.board as board
+        kandidaat = getattr(board, "btn_start", None)
+        if kandidaat is None:
+            # De bekabeling zit in een submodule die naar het bord heet. Die
+            # staat pas in dir() als iemand hem geïmporteerd heeft, dus eerst
+            # zelf proberen en pas daarna rondkijken.
+            try:
+                __import__("mpos.board.fri3d_2026")
+            except Exception:
+                pass
+            for naam in dir(board):
+                if naam.startswith("_"):
+                    continue
+                kandidaat = getattr(getattr(board, naam), "btn_start", None)
+                if kandidaat is not None:
+                    break
+        if kandidaat is not None and hasattr(kandidaat, "value"):
+            _knop = kandidaat
+        else:
+            print("badge: geen S-knop in mpos.board")
+    except Exception as e:
+        print("badge: S-knop niet gevonden:", e)
+    return _knop or None
+
+
+def knop_flank():
+    """True op het moment dat S ingedrukt wordt, niet zolang hij vastgehouden is.
+
+    Wordt elke lus aangeroepen, ook met het scherm aan, want anders is de eerste
+    meting in het donker een vergelijking met een stand van minuten geleden."""
+    global _knop_vorige
+    pin = _knop_pin()
+    if pin is None:
+        return False
+    try:
+        stand = int(pin.value())
+    except Exception:
+        return False
+    neer = _knop_vorige == 1 and stand == 0
+    _knop_vorige = stand
+    return neer
 
 
 def idle_ms():
@@ -648,23 +1095,91 @@ def idle_ms():
         return 0
 
 
-def screen_tick():
-    """Uit na SCREEN_OFF_S seconden niets doen, aan bij de eerste aanraking.
+_vorige_stil = 0
+_kijk_tot = 0
+_kijk_negeer = 0         # tot wanneer een aanraking in KIJK genegeerd wordt
 
-    Twee dingen om te weten. De tik die het scherm wekt komt ook aan bij de knop
-    eronder, dus de eerste aanraking na het uitgaan kan iets indrukken; dat is
-    hoe deze firmware het aanlevert en niet vanaf hier te onderscheppen. En het
-    scherm wekken op een binnenkomend bericht is de taak van de app die het
-    bericht krijgt: die roept wake() aan."""
-    if SCREEN_OFF_S <= 0:
-        if screen_off:
-            _screen_set(True)
-        return
+
+def screen_tick():
+    """De schermtoestand bijwerken. Draait elke LUS_TICK.
+
+    Drie dingen om te weten.
+
+    Aanraking wordt niet aan de teller zelf afgelezen maar aan het teruglopen
+    ervan. Een druk op S reset de inactiviteitsteller net zo goed als een vinger,
+    dus "de teller staat laag" betekent niet "er is net iemand op het scherm
+    geweest". Dat de teller *daalt* betekent wel dat er iets gebeurd is, en de
+    knopafhandeling hieronder verbruikt die daling voor hij iets kan wekken.
+
+    De tik die het scherm wekt komt ook aan bij de knop eronder. Dat is hoe deze
+    firmware het aanlevert en het is hier niet te onderscheppen.
+
+    Wekken op een binnenkomend bericht is de taak van de app die het bericht
+    krijgt: die roept wake() aan."""
+    global _vorige_stil, _kijk_tot, _kijk_negeer
+    gedrukt = knop_flank()
     stil = idle_ms()
-    if stil >= SCREEN_OFF_S * 1000:
-        _screen_set(False)
-    elif screen_off:
-        _screen_set(True)
+    activiteit = stil < _vorige_stil
+    _vorige_stil = stil
+
+    if SCREEN_OFF_S <= 0:
+        scherm_zet(SCHERM_NORMAAL)
+        return
+    epoch = nu_epoch()
+    nacht = is_night(epoch)
+    donker = screen_state in (SCHERM_UIT, SCHERM_KIJK)
+
+    if gedrukt and donker:
+        if screen_state == SCHERM_UIT:
+            # Even kijken hoe laat het is. De klok en verder niets.
+            nu = _seconden()
+            _kijk_tot = nu + KIJK_S
+            _kijk_negeer = nu + 2
+            scherm_zet(SCHERM_KIJK, nacht)
+        else:
+            # Nog eens: terug naar waar je was.
+            scherm_zet(SCHERM_NORMAAL)
+            try:
+                _display().trigger_activity()
+            except Exception:
+                pass
+        return
+
+    if screen_state == SCHERM_KIJK:
+        # De eerste seconden wordt een aanraking genegeerd. De druk op S die
+        # deze toestand opriep reset de inactiviteitsteller een fractie later,
+        # en dat is niet te onderscheiden van een vinger. Daarna telt een
+        # aanraking gewoon: de klok laat een tik door naar de app eronder, en
+        # dan hoort die app ook zichtbaar te worden.
+        if _seconden() >= _kijk_tot:
+            scherm_zet(SCHERM_UIT)
+        elif activiteit and _seconden() >= _kijk_negeer:
+            scherm_zet(SCHERM_NORMAAL)
+        else:
+            _klok_bijwerken()
+        return
+
+    if stil < SCREEN_OFF_S * 1000:
+        if screen_state != SCHERM_NORMAAL and activiteit:
+            scherm_zet(SCHERM_NORMAAL)
+        return
+
+    if IDLE_MODE != "klok":
+        scherm_zet(SCHERM_UIT)
+        return
+    if nacht and stil >= 2 * SCREEN_OFF_S * 1000:
+        # 's Nachts eerst een tijd de gedimde klok, en daarna alsnog donker.
+        scherm_zet(SCHERM_UIT)
+        return
+    scherm_zet(SCHERM_KLOK, nacht)
+    _klok_bijwerken()
+
+
+def _seconden():
+    try:
+        return time.time()
+    except Exception:
+        return 0
 
 
 class BadgeService(Service):
@@ -695,6 +1210,10 @@ class BadgeService(Service):
         _service = self
         migrate_prefs()
         load_prefs()
+        # Het weer hangt aan een gedeeld topic en niet aan de naam van deze
+        # badge, dus het volledige topic gaat erin; topic() laat dat staan.
+        if WEER_TOPIC:
+            subscribe(WEER_TOPIC, _on_weer)
         print("badge: service voor", BADGE_NAME, "prefix", TOPIC_PREFIX)
 
     def onStart(self, intent=None):
@@ -725,17 +1244,21 @@ class BadgeService(Service):
     # --- hoofdlus ----------------------------------------------------------
 
     async def _run(self):
+        volgende_pomp = 0
         while self._running:
-            try:
-                self._pump()
-            except Exception as e:            # de loop mag nooit sterven
-                print("badge: lusfout:", e)
-                self._close()
+            now = time.time()
+            if now >= volgende_pomp:
+                volgende_pomp = now + TICK
+                try:
+                    self._pump()
+                except Exception as e:        # de loop mag nooit sterven
+                    print("badge: lusfout:", e)
+                    self._close()
             try:
                 screen_tick()
-            except Exception:
-                pass
-            await TaskManager.sleep(TICK)
+            except Exception as e:
+                print("badge: schermfout:", e)
+            await TaskManager.sleep(LUS_TICK)
 
     def _pump(self):
         now = time.time()
