@@ -435,6 +435,38 @@ async def spotify_sn(ip):
     return SPOTIFY_FALLBACK
 
 
+async def accounts(ip):
+    """De accounts die op dit huishouden staan, per dienst.
+
+    Geen SOAP maar een gewone GET op /status/accounts. Geeft een lijst dicts met
+    type, serienummer en gebruikersnaam. Het serienummer is wat in de cdudn
+    hoort; welke van de vier Spotify-accounts een badge gebruikt is daarmee een
+    voorkeur per badge.
+    """
+    status, body = await http(ip, "GET", "/status/accounts", port=1400)
+    if status != 200:
+        raise SonosError("accounts: HTTP %s" % status)
+    uit = []
+    pos = 0
+    while True:
+        i = body.find("<Account ", pos)
+        if i < 0:
+            return uit
+        j = body.find("</Account>", i)
+        if j < 0:
+            j = body.find("/>", i)
+            if j < 0:
+                return uit
+        blok = body[i:j]
+        soort = re.search('Type="([0-9]+)"', blok)
+        serie = re.search('SerialNum="([0-9]+)"', blok)
+        naam = re.search("<UN>(.*?)</UN>", blok)
+        uit.append({"type": int(soort.group(1)) if soort else 0,
+                    "serial": serie.group(1) if serie else "0",
+                    "gebruiker": unesc(naam.group(1)) if naam else ""})
+        pos = j + 1
+
+
 def parse_spotify(uri):
     m = re.search("spotify.*[:/](album|episode|playlist|show|track)[:/]([A-Za-z0-9]+)", uri)
     if not m:
@@ -442,7 +474,14 @@ def parse_spotify(uri):
     return m.group(1), ("spotify:%s:%s" % (m.group(1), m.group(2))).replace(":", "%3a")
 
 
-def metadata(soort, encoded, sn, titel=""):
+def metadata(soort, encoded, sn, titel="", account="0"):
+    """De cdudn zegt welke dienst en welk account de muziek levert.
+
+    Het laatste veld is het accountnummer binnen die dienst. Bij een gezin met
+    vier Spotify-accounts op hetzelfde huishouden is dat het enige verschil
+    tussen "speel de lijst van papa" en "speel de lijst van de kinderen". Nul is
+    het account dat Sonos zelf als eerste noemt, en dat was hiervoor de enige
+    mogelijkheid."""
     key, cls = MAGIC[soort]
     return ('<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/"'
             ' xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"'
@@ -451,11 +490,12 @@ def metadata(soort, encoded, sn, titel=""):
             '<item id="%s" parentID="-1" restricted="true">'
             "<dc:title>%s</dc:title><upnp:class>%s</upnp:class>"
             '<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">'
-            "SA_RINCON%d_X_#Svc%d-0-Token</desc></item></DIDL-Lite>"
-            % (key + encoded, esc(titel), cls, sn, sn))
+            "SA_RINCON%d_X_#Svc%d-%s-Token</desc></item></DIDL-Lite>"
+            % (key + encoded, esc(titel), cls, sn, sn, account))
 
 
-async def play_spotify(ip, uri, shuffle=False, titel="", speler_uid=None, sn=None):
+async def play_spotify(ip, uri, shuffle=False, titel="", speler_uid=None,
+                       sn=None, account="0"):
     """Wachtrij vervangen door deze playlist of dit album, en starten."""
     soort, encoded = parse_spotify(uri)
     if not soort:
@@ -472,7 +512,8 @@ async def play_spotify(ip, uri, shuffle=False, titel="", speler_uid=None, sn=Non
     try:
         r = await soap(ip, AV, "AddURIToQueue", [
             ("InstanceID", 0), ("EnqueuedURI", enqueued),
-            ("EnqueuedURIMetaData", metadata(soort, encoded, sn, titel)),
+            ("EnqueuedURIMetaData",
+             metadata(soort, encoded, sn, titel, account)),
             ("DesiredFirstTrackNumberEnqueued", 0), ("EnqueueAsNext", 0)])
     except SonosError as e:
         # 804 komt in de praktijk van een playlist die niet meer bestaat, niet
@@ -495,6 +536,27 @@ async def play_spotify(ip, uri, shuffle=False, titel="", speler_uid=None, sn=Non
                [("InstanceID", 0), ("Unit", "TRACK_NR"), ("Target", 1)])
     await play(ip)
     return aantal
+
+
+# Een favoriet is of iets dat in de wachtrij hoort, of een stream. Radio hoort
+# nooit in een wachtrij: Sonos neemt de AddURIToQueue aan en speelt vervolgens
+# niets, wat lijkt op een kapotte favoriet en het niet is. Het onderscheid staat
+# in de resMD als upnp:class ...audioBroadcast, en anders in het schema van de
+# res.
+STREAM_SCHEMES = ("x-sonosapi-stream:", "x-sonosapi-radio:",
+                  "x-sonosapi-hls:", "x-sonosapi-hls-static:",
+                  "x-rincon-mp3radio:", "hls-radio:", "aac:", "mms:", "rtsp:")
+
+
+def is_stream(fav):
+    """Is dit een zender in plaats van een lijst met nummers?"""
+    if "audioBroadcast" in (fav.get("resmd") or ""):
+        return True
+    res = fav.get("res") or ""
+    for scheme in STREAM_SCHEMES:
+        if res.startswith(scheme):
+            return True
+    return False
 
 
 async def favorites(ip):
@@ -524,6 +586,14 @@ async def favorites(ip):
 
 
 async def play_favorite(ip, fav, speler_uid=None):
+    if is_stream(fav):
+        # Rechtstreeks op de speler. Geen wachtrij, geen Seek: een zender heeft
+        # geen nummer 1 om naartoe te springen.
+        await soap(ip, AV, "SetAVTransportURI",
+                   [("InstanceID", 0), ("CurrentURI", fav["res"]),
+                    ("CurrentURIMetaData", fav.get("resmd") or "")])
+        await play(ip)
+        return
     await clear_queue(ip)
     await soap(ip, AV, "AddURIToQueue", [
         ("InstanceID", 0), ("EnqueuedURI", fav["res"]),

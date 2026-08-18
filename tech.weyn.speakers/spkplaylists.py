@@ -10,11 +10,11 @@ Tikken op een rij zet de lijst op de gekozen box en gaat terug naar de speler.
 
 from mpos import Activity
 
-import mzstate as state
-import mzui as ui
+import spkstate as state
+import spkui as ui
 
 
-class MuziekLijsten(Activity):
+class SpeakerLijsten(Activity):
 
     def __init__(self):
         super().__init__()
@@ -121,7 +121,7 @@ class MuziekLijsten(Activity):
             if not state.lijsten and not state.bezig:
                 ui.label(self.lijst,
                          "geen playlists" if state.spotify_ingesteld()
-                         else "Spotify staat niet in muziek_config.py",
+                         else "Spotify staat niet in speakers_config.py",
                          ui.COL_DIM, breedte=ui.SCHERM_B)
         else:
             for f in state.favorieten:

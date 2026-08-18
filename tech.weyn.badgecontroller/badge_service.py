@@ -60,7 +60,7 @@ Service = _mpos("Service", "mpos.app.service")
 TaskManager = _mpos("TaskManager", "mpos.task_manager")
 SharedPreferences = _mpos("SharedPreferences", "mpos.config")
 
-APP_FULLNAME = "be.weyn.badge"
+APP_FULLNAME = "tech.weyn.badgecontroller"
 PREFS_APP_ID = APP_FULLNAME
 
 # --- configuratie -----------------------------------------------------------
@@ -242,57 +242,83 @@ def set_badge_name(name):
     return changed
 
 
-LEGACY_PREFS_APP_ID = "be.weyn.dinerbadge"
-LEGACY_KEYS = (("badge_name", "child_name", "string"),
-               ("mqtt_host", "mqtt_host", "string"),
-               ("mqtt_port", "mqtt_port", "int"),
-               ("mqtt_user", "mqtt_user", "string"),
-               ("mqtt_pass", "mqtt_pass", "string"))
+# Deze verbinding heeft drie keer een andere naam gehad, en instellingen hangen
+# aan de naam van de app. Eerst zat hij in Berichtjes (be.weyn.dinerbadge),
+# daarna in be.weyn.badge, en sinds de apps onder weyn.tech staan heet hij
+# tech.weyn.badgecontroller. Zonder deze stap vraagt een badge die al maanden hangt na een
+# update opnieuw om zijn brokerwachtwoord, op een aanraakscherm.
+#
+# Nieuwste bron eerst: wie be.weyn.badge heeft gehad heeft daar het meest
+# complete stel staan, inclusief het scherm en het debug-lampje.
+LEGACY_SOURCES = (
+    ("tech.weyn.badge", (("badge_name", "badge_name", "string"),
+                         ("mqtt_host", "mqtt_host", "string"),
+                         ("mqtt_port", "mqtt_port", "int"),
+                         ("mqtt_user", "mqtt_user", "string"),
+                         ("mqtt_pass", "mqtt_pass", "string"),
+                         ("screen_off_s", "screen_off_s", "int"),
+                         ("debug_led", "debug_led", "int"))),
+    ("be.weyn.badge", (("badge_name", "badge_name", "string"),
+                       ("mqtt_host", "mqtt_host", "string"),
+                       ("mqtt_port", "mqtt_port", "int"),
+                       ("mqtt_user", "mqtt_user", "string"),
+                       ("mqtt_pass", "mqtt_pass", "string"),
+                       ("screen_off_s", "screen_off_s", "int"),
+                       ("debug_led", "debug_led", "int"))),
+    ("be.weyn.dinerbadge", (("badge_name", "child_name", "string"),
+                            ("mqtt_host", "mqtt_host", "string"),
+                            ("mqtt_port", "mqtt_port", "int"),
+                            ("mqtt_user", "mqtt_user", "string"),
+                            ("mqtt_pass", "mqtt_pass", "string"))),
+)
 
 
 def migrate_prefs():
-    """Overnemen wat er onder Berichtjes stond, één keer.
+    """Overnemen wat er onder een oudere naam van deze app stond, een keer.
 
-    Deze instellingen zijn ooit op de badge getypt toen Berichtjes de verbinding
-    nog bezat. Ze staan in de SharedPreferences van die app. Zonder deze stap
-    valt een badge die al maanden werkt na een update terug op de standaard uit
-    het configbestand, en moet iemand naam, broker, gebruiker en wachtwoord
-    opnieuw intypen op een aanraakscherm. Draait alleen als er hier nog niets
-    staat, dus wie eenmaal iets in de Badge-app zet wordt nooit meer overschreven.
+    Draait alleen als er hier nog niets staat, dus wie eenmaal iets in de
+    Badge-app zet wordt nooit meer overschreven. De eerste bron die iets
+    oplevert wint; verder zoeken zou een oudere waarde over een nieuwere heen
+    kunnen zetten.
+
+    Een int van nul wordt overgeslagen. Dat kan omdat nul voor allebei de
+    int-sleutels ook de standaard is: het scherm gaat nooit uit en het
+    debug-lampje staat uit.
     """
     try:
         prefs = SharedPreferences(PREFS_APP_ID)
         if prefs.get_string("badge_name", ""):
             return False
-        oud = SharedPreferences(LEGACY_PREFS_APP_ID)
-        editor = None
-        overgenomen = []
-        for nieuw_key, oud_key, soort in LEGACY_KEYS:
-            if soort == "int":
-                waarde = oud.get_int(oud_key, 0)
-                if not waarde:
-                    continue
-            else:
-                waarde = oud.get_string(oud_key, "")
-                if not waarde:
-                    continue
+        for oud_id, keys in LEGACY_SOURCES:
+            oud = SharedPreferences(oud_id)
+            editor = None
+            overgenomen = []
+            for nieuw_key, oud_key, soort in keys:
+                if soort == "int":
+                    waarde = oud.get_int(oud_key, 0)
+                    if not waarde:
+                        continue
+                else:
+                    waarde = oud.get_string(oud_key, "")
+                    if not waarde:
+                        continue
+                if editor is None:
+                    editor = prefs.edit()
+                if soort == "int":
+                    editor.put_int(nieuw_key, int(waarde))
+                else:
+                    editor.put_string(nieuw_key, waarde)
+                overgenomen.append(nieuw_key)
             if editor is None:
-                editor = prefs.edit()
-            if soort == "int":
-                editor.put_int(nieuw_key, int(waarde))
-            else:
-                editor.put_string(nieuw_key, waarde)
-            overgenomen.append(nieuw_key)
-        if editor is None:
-            return False
-        editor.commit()
-        print("badge: instellingen overgenomen van Berichtjes:",
-              ", ".join(overgenomen))
-        return True
+                continue
+            editor.commit()
+            print("badge: instellingen overgenomen van %s:" % oud_id,
+                  ", ".join(overgenomen))
+            return True
+        return False
     except Exception as e:
         print("badge: kon de oude instellingen niet overnemen:", e)
         return False
-
 
 def _expander():
     import mpos

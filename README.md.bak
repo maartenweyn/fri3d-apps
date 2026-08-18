@@ -73,7 +73,7 @@ delivery rate somewhere around 40 percent.
 
 The on-screen text is Dutch (`Geen berichten`, `Nieuw bericht!`, `Ontvangen!`,
 `gestuurd om 18:42`). Everything else, including the Home Assistant examples, is
-in English. Changing the four strings in `messages.py` is a five minute job if
+in English. Changing the four strings in `dinerbadge.py` is a five minute job if
 you want another language.
 
 **What you need:** a Fri3d 2026 badge, Home Assistant, and an MQTT broker they
@@ -180,7 +180,7 @@ and none of them are about messages. They describe the badge.
   messages app still owned the connection keeps its name, broker and login. You
   do not retype four fields on a touchscreen.
 
-### Muziek — `tech.weyn.speakers`
+### Muziek — `tech.weyn.muziek`
 
 Start one of your Spotify playlists on a Sonos speaker, from the badge.
 
@@ -201,23 +201,12 @@ move them in five minute steps.
 - **Two sources for the list.** Your Spotify playlists, and the favourites stored
   in the Sonos system itself. They break independently: one needs a refresh
   token, the other needs nothing. A button switches.
-- **Radio is its own button.** Sonos keeps stations and playlists together in
-  one favourites list, and a station is not a playlist: queueing one is accepted
-  by Sonos and then plays nothing, which looks exactly like a broken favourite.
-  Stations go straight to the player instead, and the Radio screen shows only
-  those, so VRT 1 in the kitchen is one tap rather than two screens deep.
-- **Which Spotify account plays is a property of the Sonos household**, not of
-  the badge: the badge only hands over a `spotify:playlist:` URI plus a `cdudn`
-  that names the service and the account. A family plan puts several accounts on
-  one household, and the account number in that string is the only difference
-  between one member's playlists and another's. It is a preference per badge;
-  `./tools/sonos_probe.py accounts <ip>` lists the numbers to choose from.
 - **Nothing blocks the screen.** Every network call is a coroutine over
   `asyncio.open_connection`, TLS included, because LVGL runs on the same thread
   and a blocking socket freezes the display.
 
 Spotify needs a one-time login on a computer: `tools/spotify_auth.py` does the
-PKCE dance and prints a refresh token for `speakers_config.py`. Without it the app
+PKCE dance and prints a refresh token for `muziek_config.py`. Without it the app
 still works, on the Sonos favourites. `tools/sonos_probe.py` is the same protocol
 layer as a standalone script, for looking at what a speaker answers without a
 badge in the loop.
@@ -358,9 +347,9 @@ Everything except the pixels runs on desktop Python against stubs for `lvgl`
 and `mpos`:
 
     python3 tests/test_pomodoro.py      # 73 checks
-    python3 tests/test_messages.py      # 174 checks
+    python3 tests/test_dinerbadge.py    # 174 checks
     python3 tests/test_badge.py         # 2115 checks
-    python3 tests/test_speakers.py      # 466 checks
+    python3 tests/test_muziek.py        # 415 checks
     python3 tests/test_autoupdate.py    # 976 checks
 
 Pomodoro: the phase cycle, pause and resume timing, the day rollover, clamping
@@ -448,27 +437,27 @@ trusting a documented import path.
 
 ## Layout
 
-    tech.weyn.pomodoro/         an app, in a folder named after its app id
-    tech.weyn.messages/         messages from Home Assistant
-    tech.weyn.badgecontroller/  the MQTT link, the badge's own sensors, the screen
-    tech.weyn.speakers/         Spotify, radio and alarms on the Sonos speakers
-    tech.weyn.updates/          keeps the badge equal to your own app index
-    badge.sh                    mpremote wrapper
-    tools/                      scripts that run on the badge, plus the packager
-    tools/publish.sh            builds every .mpk and writes your app_index.json
-    tools/mcp/                  MCP server exposing the badge over USB
-    tests/                      lvgl and mpos stubs, offline tests
-    docs/                       notes on MicroPythonOS and this badge,
-                                plus the Home Assistant side of Berichtjes
-    docs/images/                the screenshots used above
-    dist/                       built .mpk files, not tracked
+    tech.weyn.pomodoro/     an app, in a folder named after its app id
+    tech.weyn.messages/    messages from Home Assistant
+    tech.weyn.badgecontroller/         the MQTT link, the badge's own sensors, the screen
+    tech.weyn.muziek/        Spotify playlists on the Sonos speakers nearby
+    tech.weyn.updates/    keeps the badge equal to your own app index
+    badge.sh               mpremote wrapper
+    tools/                 scripts that run on the badge, plus the packager
+    tools/publish.sh       builds every .mpk and writes your app_index.json
+    tools/mcp/             MCP server exposing the badge over USB
+    tests/                 lvgl and mpos stubs, offline tests
+    docs/                  notes on MicroPythonOS and this badge,
+                           plus the Home Assistant side of Berichtjes
+    docs/images/           the screenshots used above
+    dist/                  built .mpk files, not tracked
 
 An app id is a domain you control, reversed. These are all `tech.weyn.*`, from
 `weyn.tech`. They used to be `be.weyn.*`, which claims `weyn.be`, a domain that
 does not resolve, and Pomodoro used to be `be.fri3d.pomodoro`, which claims the
 camp's domain rather than ours.
 
-Two of the names themselves were wrong as well. `messages` was a fossil from
+Two of the names themselves were wrong as well. `dinerbadge` was a fossil from
 when the app only called the children to the table; it shows any message Home
 Assistant sends, so it is `messages`. And `badge` said nothing: every app here
 runs on a badge. That one is `badgecontroller`, the app that owns what the

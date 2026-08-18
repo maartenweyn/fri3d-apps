@@ -137,7 +137,7 @@ yourself under Settings, Entities if that bothers you.
 
 If nothing appears, discovery is off or on a different prefix. It is on by
 default; the setting lives in the MQTT integration's own options, and
-`DISCOVERY_PREFIX` in `dinerbadge_config.py` has to match it.
+`DISCOVERY_PREFIX` in `messages_config.py` has to match it.
 
 ## How the status works
 

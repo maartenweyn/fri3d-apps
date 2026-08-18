@@ -36,7 +36,7 @@ if find "$APP" -name '__pycache__' -o -name '.DS_Store' | grep -q .; then
 fi
 
 # A file that is too sensitive for the repository is too sensitive for a package
-# you hand to someone or publish on BadgeHub. Berichtjes' dinerbadge_config.py
+# you hand to someone or publish on BadgeHub. Berichtjes' messages_config.py
 # holds the MQTT password, and it went straight into the .mpk until this check
 # existed. git decides: whatever it ignores stays out.
 EXCLUDED=""

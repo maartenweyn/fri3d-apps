@@ -6,8 +6,8 @@ verhuist een speler, zijn uid verandert nooit. Wie op de naam tikt, krijgt de
 lijst met boxen.
 
 Het scherm rekent niet en praat niet met het netwerk. Het kijkt per frame naar
-mzstate.seq en tekent alleen opnieuw als dat getal veranderd is. Alle trage
-dingen zijn taken in mzstate, want een blokkerende socket op deze thread
+spkstate.seq en tekent alleen opnieuw als dat getal veranderd is. Alle trage
+dingen zijn taken in spkstate, want een blokkerende socket op deze thread
 bevriest LVGL.
 """
 
@@ -15,11 +15,12 @@ import lvgl as lv
 
 from mpos import Activity, Intent
 
-import mzstate as state
-import mzui as ui
-from mzzones import MuziekZones
-from mzplaylists import MuziekLijsten
-from mzalarms import MuziekWekkers
+import spkstate as state
+import spkui as ui
+from spkzones import SpeakerZones
+from spkplaylists import SpeakerLijsten
+from spkalarms import SpeakerWekkers
+from spkradio import SpeakerRadio
 
 STAAT_NL = {
     "PLAYING": "speelt",
@@ -29,7 +30,7 @@ STAAT_NL = {
 }
 
 
-class Muziek(Activity):
+class Speakers(Activity):
 
     def __init__(self):
         super().__init__()
@@ -68,8 +69,12 @@ class Muziek(Activity):
         ui.knop(bediening, "-", lambda: self._volume(-4), grow=1)
         ui.knop(bediening, "+", lambda: self._volume(4), grow=1)
 
+        # Drie knoppen van een derde van 304 zijn nog altijd ruim honderd breed
+        # en 44 hoog, dus met een vinger te raken. Een vierde zou dat niet meer
+        # zijn.
         onder = ui.rij(s, 44)
         ui.knop(onder, "Playlists", self._open_lijsten, grow=1)
+        ui.knop(onder, "Radio", self._open_radio, grow=1)
         ui.knop(onder, "Wekkers", self._open_wekkers, grow=1)
 
         self.status = ui.label(s, "", ui.COL_DIM, breedte=ui.SCHERM_B)
@@ -172,14 +177,17 @@ class Muziek(Activity):
         state.taak(state.zoek_zones(), klaar=lambda r: state.taak(state.ververs_speler()))
 
     def _open_zones(self):
-        self.startActivity(Intent(activity_class=MuziekZones))
+        self.startActivity(Intent(activity_class=SpeakerZones))
 
     def _open_lijsten(self):
         if state.zone is None:
             return
-        self.startActivity(Intent(activity_class=MuziekLijsten))
+        self.startActivity(Intent(activity_class=SpeakerLijsten))
+
+    def _open_radio(self):
+        self.startActivity(Intent(activity_class=SpeakerRadio))
 
     def _open_wekkers(self):
         if state.zone is None:
             return
-        self.startActivity(Intent(activity_class=MuziekWekkers))
+        self.startActivity(Intent(activity_class=SpeakerWekkers))

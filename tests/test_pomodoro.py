@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True   # never drop __pycache__ into the app folder
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "stubs"))
-sys.path.insert(0, os.path.join(ROOT, "be.fri3d.pomodoro"))
+sys.path.insert(0, os.path.join(ROOT, "tech.weyn.pomodoro"))
 
 # --- MicroPython time shims -------------------------------------------------
 # ticks_* are modular, not plain integers. ticks_diff returns a signed value
@@ -59,7 +59,9 @@ def advance(app, ms, step=100):
         app.update_frame(None, None)
 
 fails = []
+checks = {"n": 0}
 def check(cond, msg):
+    checks["n"] += 1
     if not cond:
         fails.append(msg)
     print(("  ok  " if cond else "  FAIL") + "  " + msg)
@@ -90,7 +92,7 @@ check(app.time_text == "22:59", "resumes from where it stopped, got %r" % app.ti
 print("=== full cycle: work -> short -> ... -> long ===")
 cfg._STORE.clear()
 LightsManager.log.clear(); AudioManager.played.clear()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 1)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 1)\
     .put_int("short_min", 1).put_int("long_min", 1).put_int("rounds", 4)\
     .put_int("sound", 1).put_int("leds", 1).put_int("autostart", 1).commit()
 app = pomodoro.Pomodoro()
@@ -115,11 +117,11 @@ check(len(LightsManager.log) > 8, "LEDs were driven (%d writes)" % len(LightsMan
 check(pomodoro.LightsManager is LightsManager, "LightsManager resolved via mpos.lights")
 check(AudioManager.routed and all(o is not None and o.kind == "buzzer" for o in AudioManager.routed),
       "chimes routed to the buzzer, not the headset: %s" % (AudioManager.routed,))
-check(cfg._STORE["be.fri3d.pomodoro"]["done_today"] == 4, "counter persisted")
+check(cfg._STORE["tech.weyn.pomodoro"]["done_today"] == 4, "counter persisted")
 
 print("=== autostart off leaves the next phase paused ===")
 cfg._STORE.clear()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 1)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 1)\
     .put_int("autostart", 0).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle(); advance(app, 61_000)
@@ -133,7 +135,7 @@ check(not app.running and app.remaining_ms == app._phase_ms(), "reset restores t
 
 print("=== day rollover ===")
 cfg._STORE.clear()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit()\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit()\
     .put_string("day", "1999-01-01").put_int("done_today", 7).commit()
 app = pomodoro.Pomodoro(); app.onCreate()
 check(app.done_today == 0, "counter resets on a new day, got %d" % app.done_today)
@@ -156,7 +158,7 @@ sw.state.clear()
 s._toggle("sound", sw)
 check(s.values["sound"] == 0, "switch off writes 0")
 s.onPause(None)
-check(cfg._STORE["be.fri3d.pomodoro"]["work_min"] == 1, "settings persisted on leaving")
+check(cfg._STORE["tech.weyn.pomodoro"]["work_min"] == 1, "settings persisted on leaving")
 
 print("=== settings feed back into the timer ===")
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
@@ -169,7 +171,7 @@ check(all(cb is not app._frame_cb for cb in pomodoro.mpos.ui.task_handler.cbs),
 print("=== LEDs behave like an hourglass ===")
 cfg._STORE.clear()
 LightsManager.reset()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 5)\
     .put_int("leds", 1).put_int("brightness", 20).put_int("autostart", 0).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle()
@@ -189,7 +191,7 @@ check(all(led[0] > 4 * max(led[1], led[2]) for led in LightsManager.leds if max(
 print("=== paused looks different from off ===")
 cfg._STORE.clear()
 LightsManager.reset()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 5)\
     .put_int("leds", 1).put_int("brightness", 40).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle(); advance(app, 60_000); app._toggle()
@@ -204,7 +206,7 @@ check(LightsManager.leds == [(0, 0, 0)] * 5, "all LEDs off when leaving the app"
 print("=== brightness of zero-ish still produces valid colours ===")
 cfg._STORE.clear()
 LightsManager.reset()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 5)\
     .put_int("leds", 1).put_int("brightness", 1).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle(); advance(app, 5_000)
@@ -223,7 +225,7 @@ print("=== one LED per fifth of the configured phase, not per five minutes ===")
 def lit_after(minutes_total, minutes_elapsed):
     cfg._STORE.clear()
     LightsManager.reset()
-    mpos.config.SharedPreferences("be.fri3d.pomodoro").edit()\
+    mpos.config.SharedPreferences("tech.weyn.pomodoro").edit()\
         .put_int("work_min", minutes_total).put_int("leds", 1)\
         .put_int("brightness", 40).put_int("autostart", 0).commit()
     a = pomodoro.Pomodoro(); a.onCreate(); a.onResume(a._view)
@@ -240,7 +242,7 @@ print("=== editing the settings does not animate the LEDs ===")
 pomodoro.mpos.ui.task_handler.cbs.clear()   # earlier sections left theirs behind
 cfg._STORE.clear()
 LightsManager.reset()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 25)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 25)\
     .put_int("leds", 1).put_int("brightness", 40).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle(); advance(app, 60_000)
@@ -254,7 +256,7 @@ for _ in range(50):
 check(LightsManager.leds == before, "and they stay dark while time passes")
 
 print("=== shortening a running phase does not overflow the strip ===")
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 5).commit()
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 5).commit()
 app.onResume(app._view)
 advance(app, 1_000)
 check(len(LightsManager.leds) == 5, "still five LEDs")
@@ -265,11 +267,11 @@ check(app.running, "and the timer is still running")
 
 print("=== lengthening a running phase keeps the clock ===")
 cfg._STORE.clear()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 10).commit()
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 10).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 app._toggle(); advance(app, 120_000)
 left = app.remaining_ms
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 40).commit()
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 40).commit()
 app.onResume(app._view)
 check(abs(app.remaining_ms - left) < 2000,
       "a longer phase leaves the running countdown alone: %d vs %d" % (app.remaining_ms, left))
@@ -280,7 +282,7 @@ pomodoro.mpos.ui.task_handler.cbs.clear()
 cfg._STORE.clear()
 LightsManager.reset()
 board.btn_start.release()
-mpos.config.SharedPreferences("be.fri3d.pomodoro").edit().put_int("work_min", 25)\
+mpos.config.SharedPreferences("tech.weyn.pomodoro").edit().put_int("work_min", 25)\
     .put_int("leds", 0).commit()
 app = pomodoro.Pomodoro(); app.onCreate(); app.onResume(app._view)
 check(app._start_pin is board.btn_start, "the app found the badge's S button")
@@ -342,8 +344,33 @@ app.update_frame(None, None)
 check(app._start_pin is None, "a pin that starts failing is dropped, not retried forever")
 app.onPause(app._view)
 
+# --- settings carried over from the old app id ------------------------------
+# The app used to be be.fri3d.pomodoro, a domain that is not ours. Preferences
+# hang off the app id, so without carrying them over everybody is back on
+# 25 minutes with the LEDs on after the rename.
+import mpos.config
+import posettings
+
+mpos.config._STORE.clear()
+old = mpos.config.SharedPreferences("be.fri3d.pomodoro").edit()
+old.put_int("work_min", 40)
+old.put_int("sound", 0)        # off is a deliberate zero, not a missing value
+old.put_int("done_today", 3)
+old.put_string("day", "2026-08-18")
+old.commit()
+
+check(posettings.migrate_prefs() is True, "old settings are carried over")
+fresh_prefs = mpos.config.SharedPreferences("tech.weyn.pomodoro")
+check(fresh_prefs.get_int("work_min", 0) == 40, "the focus length came along")
+check(fresh_prefs.get_int("sound", 1) == 0, "sound off survives, zero is a choice")
+check(fresh_prefs.get_int("done_today", 0) == 3, "today's count came along")
+check(fresh_prefs.get_string("day", "") == "2026-08-18", "and the day it counts for")
+check(posettings.migrate_prefs() is False, "a second time takes nothing over")
+mpos.config._STORE.clear()
+check(posettings.migrate_prefs() is False, "nothing to carry over is not an error")
+
 print()
-print("%d check(s) failed" % len(fails))
+print("%d checks, %d mislukt" % (checks["n"], len(fails)))
 for f in fails:
     print("  -", f)
 sys.exit(1 if fails else 0)

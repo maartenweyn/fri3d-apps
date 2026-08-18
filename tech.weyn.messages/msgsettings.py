@@ -21,7 +21,7 @@ import lvgl as lv
 
 from mpos import Activity
 
-import dinerbadge_service as service
+import messages_service as service
 
 try:
     from mpos import SharedPreferences
@@ -45,7 +45,7 @@ ROW_GAP = 6
 SCREEN_BUDGET = 224
 
 
-class DinerBadgeSettings(Activity):
+class MessagesSettings(Activity):
 
     def __init__(self):
         super().__init__()
@@ -110,12 +110,12 @@ class DinerBadgeSettings(Activity):
     def _open_badge(self):
         """Hand off to the app that owns the badge's name and connection."""
         if AppManager is None:
-            print("dinerbadge settings: no AppManager, cannot open the Badge app")
+            print("messages settings: no AppManager, cannot open the Badge app")
             return
         try:
             AppManager.start_app(service.BRIDGE_APP)
         except Exception as e:
-            print("dinerbadge settings: could not open the Badge app:", e)
+            print("messages settings: could not open the Badge app:", e)
 
     # --- rows --------------------------------------------------------------
 
@@ -237,6 +237,6 @@ class DinerBadgeSettings(Activity):
             editor.put_int("ack_timeout_min", int(self.timeout_min))
             editor.commit()
         except Exception as e:
-            print("dinerbadge settings: could not save:", e)
+            print("messages settings: could not save:", e)
         # Apply straight away, so nobody has to reboot to see it take.
         service.load_prefs()

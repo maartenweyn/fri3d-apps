@@ -4,17 +4,17 @@ Een rij per speler, 44 hoog zodat een vinger raak is. De gekozen box staat er
 omgekeerd op, donker op het oranje van de knop, en een speler die als slaaf in
 een groep hangt zegt dat erbij:
 hij weigert Play, dus het commando gaat naar de baas van zijn groep. Dat gebeurt
-vanzelf in mzstate.zone_baas, maar wie het scherm bekijkt moet wel snappen
+vanzelf in spkstate.zone_baas, maar wie het scherm bekijkt moet wel snappen
 waarom de muziek elders begint.
 """
 
 from mpos import Activity
 
-import mzstate as state
-import mzui as ui
+import spkstate as state
+import spkui as ui
 
 
-class MuziekZones(Activity):
+class SpeakerZones(Activity):
 
     def __init__(self):
         super().__init__()

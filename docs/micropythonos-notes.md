@@ -8,7 +8,7 @@ the same things up every session.
 
 An installed app is one folder under `/apps/` named after its app id:
 
-    be.fri3d.pomodoro/
+    tech.weyn.pomodoro/
     ├── MANIFEST.JSON
     ├── icon_64x64.png
     └── pomodoro.py
@@ -79,7 +79,7 @@ does. `mpos.ui.focus_direction` helps with directional focus movement.
 ## Deployment
 
     mpremote mkdir :/apps
-    mpremote fs cp -r be.fri3d.pomodoro/ :/apps/
+    mpremote fs cp -r tech.weyn.pomodoro/ :/apps/
     mpremote run tools/probe.py
     mpremote repl
 
@@ -170,7 +170,7 @@ answers happily:
 This is a class of bug offline tests cannot catch, because the stubs run on real
 CPython where the method exists. `str.capitalize()` in Berichtjes passed 78
 desktop checks and then raised `AttributeError` in `onCreate` on the badge.
-`tests/test_dinerbadge.py` now greps the app source for these sixteen names, so
+`tests/test_messages.py` now greps the app source for these sixteen names, so
 the next one fails on a desktop.
 
 ## Badge inputs, measured

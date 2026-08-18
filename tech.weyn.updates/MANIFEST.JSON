@@ -1,0 +1,38 @@
+{
+  "name": "Updates",
+  "publisher": "Maarten Weyn",
+  "short_description": "Keeps this badge's apps equal to your own app index",
+  "long_description": "Every hour this badge fetches an app_index.json you publish yourself, compares every version in it with what is installed, and installs whatever is newer. Same index format and same .mpk packages as the built-in AppStore, so nothing here is a private protocol. A failed check is simply retried, so no cold DNS miss can leave the badge stuck waiting.",
+  "fullname": "tech.weyn.updates",
+  "version": "0.1.0",
+  "categories": [
+    "System"
+  ],
+  "activities": [
+    {
+      "entrypoint": "autoupdate.py",
+      "classname": "AutoUpdate",
+      "intent_filters": [
+        {
+          "action": "main",
+          "category": "launcher"
+        }
+      ]
+    }
+  ],
+  "services": [
+    {
+      "entrypoint": "autoupdate_service.py",
+      "classname": "AutoUpdateService",
+      "intent_filters": [
+        {
+          "action": "boot_completed"
+        }
+      ]
+    }
+  ],
+  "replaces": [
+    "be.weyn.autoupdate",
+    "tech.weyn.autoupdate"
+  ]
+}

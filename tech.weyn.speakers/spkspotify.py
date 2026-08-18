@@ -4,18 +4,18 @@ Afspelen gebeurt niet hier. Spotify's Web API kan Sonos niet aansturen, want
 Sonos is daar een restricted device: de speakers verschijnen niet in
 GET /v1/me/player/devices en er valt dus geen playback naartoe te sturen. De
 badge haalt hier alleen op wat er te kiezen valt, en geeft de gekozen URI door
-aan de Sonos zelf. Zie mzsonos.play_spotify.
+aan de Sonos zelf. Zie spksonos.play_spotify.
 
 Auth is PKCE met een refresh token, dus zonder client secret op de badge. Het
 refresh token verloopt niet en wordt een keer op een computer gehaald met
-tools/spotify_auth.py. Het staat in muziek_config.py, dat gitignored is.
+tools/spotify_auth.py. Het staat in speakers_config.py, dat gitignored is.
 """
 
 import json
 import os
 
-import mzsonos
-from mzsonos import SonosError, ticks_ms, ticks_diff, ticks_add
+import spksonos
+from spksonos import SonosError, ticks_ms, ticks_diff, ticks_add
 
 ACCOUNTS = "accounts.spotify.com"
 API = "api.spotify.com"
@@ -82,7 +82,7 @@ async def access_token(client_id, refresh_token, force=False):
                            "refresh_token": refresh_token,
                            "client_id": client_id})
     try:
-        st, tekst = await mzsonos.http(ACCOUNTS, "POST", "/api/token", body,
+        st, tekst = await spksonos.http(ACCOUNTS, "POST", "/api/token", body,
                                {"Content-Type": "application/x-www-form-urlencoded"},
                                port=443, tls=True, timeout=15)
     except SonosError as e:
@@ -112,7 +112,7 @@ async def playlists(client_id, refresh_token, maximum=60):
     uit = []
     pad = "/v1/me/playlists?limit=50"
     while pad and len(uit) < maximum:
-        st, tekst = await mzsonos.http(API, "GET", pad,
+        st, tekst = await spksonos.http(API, "GET", pad,
                                headers={"Authorization": "Bearer " + token},
                                port=443, tls=True, timeout=20)
         if st == 401:
@@ -158,5 +158,5 @@ def cache_schrijven(items):
             json.dump(items, f)
         return True
     except Exception as e:
-        print("muziek: playlistcache niet geschreven:", e)
+        print("speakers: playlistcache niet geschreven:", e)
         return False

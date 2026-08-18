@@ -6,6 +6,6 @@ __pycache__/
 _to_delete/
 dist/
 tools/mcp/.venv/
-be.weyn.dinerbadge/dinerbadge_config.py
-be.weyn.muziek/muziek_config.py
-be.weyn.badge/badge_config.py
+tech.weyn.messages/messages_config.py
+tech.weyn.speakers/speakers_config.py
+tech.weyn.badgecontroller/badge_config.py

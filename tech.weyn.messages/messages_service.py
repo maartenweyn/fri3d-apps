@@ -8,7 +8,7 @@ knipperen tot iemand bevestigt, en haalt het Berichtjes-scherm naar voren.
 **De MQTT-verbinding staat hier niet meer in.** Die hoort bij de badge, niet bij
 een app: het brokeradres, het wachtwoord, de naam van de badge, de last will, de
 batterijsensoren en het toestel-id uit het MAC zijn allemaal eigenschappen van
-het toestel. Ze wonen in `be.weyn.badge`, en deze module leent daar een
+het toestel. Ze wonen in `tech.weyn.badgecontroller`, en deze module leent daar een
 verbinding. Twee MQTT-clients van hetzelfde toestel naar dezelfde broker was
 overigens ook geen optie: dat is precies de fout die deze app al een keer gekost
 heeft, want een broker gooit de oudste van twee clients met dezelfde id eruit.
@@ -40,7 +40,7 @@ def _mpos(name, *paths):
                 return getattr(mod, name)
         except Exception:
             pass
-    raise ImportError("dinerbadge: no %s in mpos or %s" % (name, paths))
+    raise ImportError("messages: no %s in mpos or %s" % (name, paths))
 
 
 Service = _mpos("Service", "mpos.app.service")
@@ -52,11 +52,11 @@ AppManager = _mpos("AppManager", "mpos.content.app_manager")
 TaskManager = _mpos("TaskManager", "mpos.task_manager")
 SharedPreferences = _mpos("SharedPreferences", "mpos.config")
 
-APP_FULLNAME = "be.weyn.dinerbadge"
+APP_FULLNAME = "tech.weyn.messages"
 PREFS_APP_ID = APP_FULLNAME
 
 # De app die de verbinding en de identiteit van de badge bezit.
-BRIDGE_APP = "be.weyn.badge"
+BRIDGE_APP = "tech.weyn.badgecontroller"
 BRIDGE_MODULE = "badge_service"
 
 # Het achtervoegsel waar Home Assistant naartoe publiceert en waar wij op
@@ -69,18 +69,18 @@ SUFFIX_ACK = "ack"
 
 # --- configuratie -----------------------------------------------------------
 # Alleen nog wat over berichten gaat. Broker, login en de naam van de badge
-# staan in be.weyn.badge.
+# staan in tech.weyn.badgecontroller.
 LED_ALERT = True
 ACK_TIMEOUT_MIN = 30
 CONFIG_OK = False
 
 try:
-    import dinerbadge_config as _cfg
+    import messages_config as _cfg
     LED_ALERT = getattr(_cfg, "LED_ALERT", True)
     ACK_TIMEOUT_MIN = getattr(_cfg, "ACK_TIMEOUT_MIN", ACK_TIMEOUT_MIN)
     CONFIG_OK = True
 except ImportError:
-    print("dinerbadge: no dinerbadge_config.py, using defaults")
+    print("messages: no messages_config.py, using defaults")
 
 TICK = 0.5               # lusperiode, en tegelijk de halve knipperperiode
 
@@ -154,6 +154,50 @@ def sync_bridge():
     return b
 
 
+# Nieuwste eerst. De app heette be.weyn.dinerbadge, heette vanmiddag kort
+# tech.weyn.dinerbadge, en heet nu tech.weyn.messages: "diner" was een fossiel
+# uit de tijd dat hij alleen de kinderen aan tafel riep.
+LEGACY_PREFS_APP_IDS = ("tech.weyn.dinerbadge", "be.weyn.dinerbadge")
+
+
+def migrate_prefs():
+    """Overnemen wat er onder de oude app-id stond, een keer.
+
+    Voorkeuren hangen aan het app-id, dus de hernoeming naar
+    tech.weyn.messages zou de LED-keuze en de wachttijd stil terugzetten. Nul
+    is hier een bewuste waarde (LEDs uit), dus -1 is wat "staat er niet" zegt.
+    """
+    try:
+        prefs = SharedPreferences(PREFS_APP_ID)
+        if prefs.get_int("ack_timeout_min", 0):
+            return False
+        for oud_id in LEGACY_PREFS_APP_IDS:
+            oud = SharedPreferences(oud_id)
+            editor = None
+            overgenomen = []
+            for key in ("ack_timeout_min", "led_alert"):
+                waarde = oud.get_int(key, -1)
+                if waarde < 0:
+                    continue
+                if editor is None:
+                    editor = prefs.edit()
+                editor.put_int(key, waarde)
+                overgenomen.append(key)
+            if editor is None:
+                continue
+            editor.commit()
+            print("messages: instellingen overgenomen van %s:" % oud_id,
+                  ", ".join(overgenomen))
+            return True
+        return False
+    except Exception as e:
+        print("messages: kon de oude instellingen niet overnemen:", e)
+        return False
+
+
+migrate_prefs()
+
+
 def load_prefs():
     """Lezen wat het instelscherm schrijft, en toepassen."""
     global LED_ALERT, ACK_TIMEOUT_MIN
@@ -162,7 +206,7 @@ def load_prefs():
         LED_ALERT = bool(prefs.get_int("led_alert", 1 if LED_ALERT else 0))
         ACK_TIMEOUT_MIN = prefs.get_int("ack_timeout_min", ACK_TIMEOUT_MIN)
     except Exception as e:
-        print("dinerbadge: could not read prefs:", e)
+        print("messages: could not read prefs:", e)
     return False
 
 
@@ -199,7 +243,7 @@ def publish_ack(seq=None):
     b = bridge()
     if b is not None and b.publish(SUFFIX_ACK, text):
         pending_ack = None
-        print("dinerbadge: ack published")
+        print("messages: ack published")
         return True
     # Een slaapkamer aan de rand van de wifi is precies waar een kind op de knop
     # drukt en de publish mislukt. Houd hem vast: Home Assistant zou anders een
@@ -269,7 +313,7 @@ def _icon():
     return "!"
 
 
-class DinerBadgeService(Service):
+class MessagesService(Service):
 
     def __init__(self):
         super().__init__()
@@ -279,21 +323,21 @@ class DinerBadgeService(Service):
         global _service
         previous = _service
         if previous is not None and previous is not self:
-            print("dinerbadge: retiring the previous service instance")
+            print("messages: retiring the previous service instance")
             try:
                 previous.onDestroy()
             except Exception as e:
-                print("dinerbadge: could not stop the previous service:", e)
+                print("messages: could not stop the previous service:", e)
         _service = self
         load_prefs()
         sync_bridge()
-        print("dinerbadge: service created for", CHILD_NAME)
+        print("messages: service created for", CHILD_NAME)
 
     def onStart(self, intent=None):
         if self._running:
             # Twee keer gestart worden is geen hypothese: alles wat de app start
             # kan de services uit het manifest opnieuw starten.
-            print("dinerbadge: already running, not starting a second loop")
+            print("messages: already running, not starting a second loop")
             return
         self._running = True
         TaskManager.create_task(self._run())
@@ -315,7 +359,7 @@ class DinerBadgeService(Service):
             try:
                 self._pump()
             except Exception as e:            # de lus mag nooit sterven
-                print("dinerbadge: loop error:", e)
+                print("messages: loop error:", e)
             try:
                 _leds_tick()
             except Exception:
@@ -348,7 +392,7 @@ class DinerBadgeService(Service):
         last_message = text
         last_message_seq += 1
         last_message_time = time.time()
-        print("dinerbadge: message", last_message_seq, repr(text))
+        print("messages: message", last_message_seq, repr(text))
 
         _leds_tick()
 
@@ -359,7 +403,7 @@ class DinerBadgeService(Service):
             try:
                 b.wake()
             except Exception as e:
-                print("dinerbadge: wake failed:", e)
+                print("messages: wake failed:", e)
 
         try:
             NotificationManager.notify(Notification(
@@ -373,13 +417,13 @@ class DinerBadgeService(Service):
                 app_fullname=APP_FULLNAME,
             ))
         except Exception as e:
-            print("dinerbadge: notify failed:", e)
+            print("messages: notify failed:", e)
 
         # Haal de app naar voren, ook als het kind een spel speelde.
         try:
             AppManager.start_app(APP_FULLNAME)
         except Exception as e:
-            print("dinerbadge: start_app failed:", e)
+            print("messages: start_app failed:", e)
 
     # --- uitgaand ----------------------------------------------------------
 
@@ -391,4 +435,4 @@ class DinerBadgeService(Service):
         b = bridge()
         if b is not None and b.publish(SUFFIX_ACK, pending_ack):
             pending_ack = None
-            print("dinerbadge: held-back ack sent")
+            print("messages: held-back ack sent")

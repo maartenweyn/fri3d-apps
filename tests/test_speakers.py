@@ -1,11 +1,11 @@
-"""Offline tests voor de Muziek-app (be.weyn.muziek).
+"""Offline tests voor de Muziek-app (tech.weyn.speakers).
 
 Draait op gewone Python tegen de stubs in tests/stubs/, zodat het protocol en de
 schermlogica na te kijken zijn zonder badge en zonder Sonos.
 
-    python3 tests/test_muziek.py
+    python3 tests/test_speakers.py
 
-Het netwerk wordt vervangen door mzsonos.http, die hier canned antwoorden
+Het netwerk wordt vervangen door spksonos.http, die hier canned antwoorden
 teruggeeft. De voorbeelden zijn geen verzinsels: de alarmen, de topologie en de
 favorieten hieronder komen woordelijk van een echt Sonos-systeem, inclusief de
 dubbele XML-escaping die de valstrik van UpdateAlarm is.
@@ -22,30 +22,31 @@ sys.dont_write_bytecode = True   # nooit __pycache__ in de app-map achterlaten
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "stubs"))
-sys.path.insert(0, os.path.join(ROOT, "be.weyn.muziek"))
+sys.path.insert(0, os.path.join(ROOT, "tech.weyn.speakers"))
 
-# muziek_config.py is gitignored, dus de app-map heeft er misschien geen. Zet er
+# speakers_config.py is gitignored, dus de app-map heeft er misschien geen. Zet er
 # een bekende in plaats van af te hangen van wat deze machine toevallig heeft.
-_config = types.ModuleType("muziek_config")
+_config = types.ModuleType("speakers_config")
 _config.SPOTIFY_CLIENT_ID = "test-client"
 _config.SPOTIFY_REFRESH_TOKEN = "test-refresh"
 _config.SONOS_IP = ""
 _config.DISCOVER_MS = 10
 _config.SHUFFLE = True
-sys.modules["muziek_config"] = _config
+sys.modules["speakers_config"] = _config
 
 import lvgl as lv                                     # noqa: E402
 import mpos                                           # noqa: E402
 import mpos.ui                                        # noqa: E402
 
-import mzsonos                                        # noqa: E402
-import mzspotify                                      # noqa: E402
-import mzstate as state                               # noqa: E402
-import mzui as ui                                     # noqa: E402
-from muziek import Muziek                             # noqa: E402
-from mzzones import MuziekZones                       # noqa: E402
-from mzplaylists import MuziekLijsten                 # noqa: E402
-from mzalarms import MuziekWekkers                    # noqa: E402
+import spksonos                                        # noqa: E402
+import spkspotify                                      # noqa: E402
+import spkstate as state                               # noqa: E402
+import spkui as ui                                     # noqa: E402
+from speakers import Speakers
+from spkradio import SpeakerRadio                             # noqa: E402
+from spkzones import SpeakerZones                       # noqa: E402
+from spkplaylists import SpeakerLijsten                 # noqa: E402
+from spkalarms import SpeakerWekkers                    # noqa: E402
 
 FAILURES = []
 CHECKS = {"n": 0}
@@ -136,7 +137,7 @@ FAVORITES_DIDL = (
 # --- nepnetwerk ------------------------------------------------------------
 
 class Net:
-    """Vervangt mzsonos.http. Onthoudt elke call en antwoordt uit een tabel."""
+    """Vervangt spksonos.http. Onthoudt elke call en antwoordt uit een tabel."""
 
     def __init__(self):
         self.calls = []          # (host, method, path, body)
@@ -184,13 +185,13 @@ async def _nep_discover(ms=0):
 
 def verse_net():
     net = Net()
-    mzsonos.http = net
-    mzsonos.discover = _nep_discover
+    spksonos.http = net
+    spksonos.discover = _nep_discover
     return net
 
 
-ECHTE_HTTP = mzsonos.http
-ECHTE_DISCOVER = mzsonos.discover
+ECHTE_HTTP = spksonos.http
+ECHTE_DISCOVER = spksonos.discover
 
 
 # --- 1. XML-helpers --------------------------------------------------------
@@ -200,22 +201,22 @@ def test_xml():
             "<dc:title>T</dc:title><upnp:album>Echt Album</upnp:album>")
     # De regressie die op hardware gevonden is: zonder naamgrens matcht
     # "album" op <upnp:albumArtURI> en krijg je een CDN-URL.
-    equal("tag album pakt niet albumArtURI", mzsonos.tag(meta, "album"), "Echt Album")
-    equal("tag title", mzsonos.tag(meta, "title"), "T")
+    equal("tag album pakt niet albumArtURI", spksonos.tag(meta, "album"), "Echt Album")
+    equal("tag title", spksonos.tag(meta, "title"), "T")
     equal("tag met attributen",
-          mzsonos.tag('<res protocolInfo="a">X</res>', "res"), "X")
-    equal("tag ontbreekt", mzsonos.tag("<a>1</a>", "b"), None)
+          spksonos.tag('<res protocolInfo="a">X</res>', "res"), "X")
+    equal("tag ontbreekt", spksonos.tag("<a>1</a>", "b"), None)
 
     equal("esc en unesc heen en terug",
-          mzsonos.unesc(mzsonos.esc('a&b<c>"d"')), 'a&b<c>"d"')
+          spksonos.unesc(spksonos.esc('a&b<c>"d"')), 'a&b<c>"d"')
     equal("unesc doet amp als laatste",
-          mzsonos.unesc("&amp;lt;"), "&lt;")
+          spksonos.unesc("&amp;lt;"), "&lt;")
 
     equal("scan vindt alles",
-          mzsonos.scan("<a x=\"1\"/><a x=\"2\"/>", '<a x="([0-9])"'),
+          spksonos.scan("<a x=\"1\"/><a x=\"2\"/>", '<a x="([0-9])"'),
           [("1",), ("2",)])
-    equal("scan op lege tekst", mzsonos.scan("", "(a)"), [])
-    a = mzsonos.attrs('<Alarm ID="7" Enabled="1" Recurrence="ONCE"')
+    equal("scan op lege tekst", spksonos.scan("", "(a)"), [])
+    a = spksonos.attrs('<Alarm ID="7" Enabled="1" Recurrence="ONCE"')
     equal("attrs leest ID", a["ID"], "7")
     equal("attrs leest Recurrence", a["Recurrence"], "ONCE")
 
@@ -224,12 +225,12 @@ def test_xml():
     # recursief en raakt door zijn stack. Desktop merkt dat niet, dus wordt hier
     # tenminste de uitkomst vastgelegd.
     lang = "&lt;DIDL-Lite&gt;" + ("&quot;x&quot; " * 300) + "&lt;/DIDL-Lite&gt;"
-    b = mzsonos.attrs('<Alarm ID="9" ProgramMetaData="' + lang + '" Volume="18"')
+    b = spksonos.attrs('<Alarm ID="9" ProgramMetaData="' + lang + '" Volume="18"')
     equal("attrs overleeft een heel lange waarde", b["ProgramMetaData"], lang)
     equal("en leest wat erachter staat nog", b["Volume"], "18")
     check("de lange waarde is meer dan duizend tekens", len(lang) > 1000)
 
-    c = mzsonos.attrs('<A x-y="1" ns:z="2" A1="3"')
+    c = spksonos.attrs('<A x-y="1" ns:z="2" A1="3"')
     equal("attrs kent koppeltekens in namen", c["x-y"], "1")
     equal("attrs kent namespaces", c["ns:z"], "2")
     equal("attrs kent cijfers in namen", c["A1"], "3")
@@ -248,16 +249,16 @@ def test_spotify_uri():
         ("https://open.spotify.com/track/1301WleyT98MSxVHPZCA6M", "track",
          "1301WleyT98MSxVHPZCA6M"),
     ):
-        s, enc = mzsonos.parse_spotify(gegeven)
+        s, enc = spksonos.parse_spotify(gegeven)
         equal("soort van " + gegeven[:34], s, soort)
         equal("gecodeerde uri van " + gegeven[:24], enc,
               "spotify%3a" + soort + "%3a" + sleutel)
     equal("niet-Spotify wordt geweigerd",
-          mzsonos.parse_spotify("https://youtube.com/x"), (None, None))
+          spksonos.parse_spotify("https://youtube.com/x"), (None, None))
 
     # Deze string is teken voor teken vergeleken met wat SoCo genereert, en die
     # is op vijf echte spelers aanvaard. Verandert hij, dan is dat een bug.
-    meta = mzsonos.metadata("playlist", "spotify%3aplaylist%3aXYZ", 2311, "")
+    meta = spksonos.metadata("playlist", "spotify%3aplaylist%3aXYZ", 2311, "")
     check("metadata heeft de juiste item-id",
           'id="1006206cspotify%3aplaylist%3aXYZ"' in meta)
     check("metadata heeft parentID -1", 'parentID="-1"' in meta)
@@ -265,9 +266,9 @@ def test_spotify_uri():
           "SA_RINCON2311_X_#Svc2311-0-Token" in meta)
     check("metadata heeft de playlistklasse",
           "object.container.playlistContainer" in meta)
-    album = mzsonos.metadata("album", "spotify%3aalbum%3aQ", 2311, "")
+    album = spksonos.metadata("album", "spotify%3aalbum%3aQ", 2311, "")
     check("album gebruikt 1004206c", 'id="1004206cspotify%3aalbum%3aQ"' in album)
-    titel = mzsonos.metadata("playlist", "e", 2311, 'A & B <c>')
+    titel = spksonos.metadata("playlist", "e", 2311, 'A & B <c>')
     check("titel wordt geescapet in de metadata",
           "A &amp; B &lt;c&gt;" in titel)
 
@@ -277,8 +278,8 @@ def test_spotify_uri():
 def test_zones():
     net = verse_net()
     net.antwoorden["GetZoneGroupState"] = soap_antwoord(
-        "<ZoneGroupState>" + mzsonos.esc(ZONE_STATE) + "</ZoneGroupState>")
-    zs = run(mzsonos.zones("1.2.3.4"))
+        "<ZoneGroupState>" + spksonos.esc(ZONE_STATE) + "</ZoneGroupState>")
+    zs = run(spksonos.zones("1.2.3.4"))
     equal("drie zones", len(zs), 3)
     op_naam = dict((z["naam"], z) for z in zs)
     equal("zones staan op naam gesorteerd", [z["naam"] for z in zs],
@@ -293,7 +294,7 @@ def test_zones():
 def test_nu_speelt():
     net = verse_net()
     net.antwoorden["GetPositionInfo"] = soap_antwoord(POSITION_INFO)
-    nu = run(mzsonos.now("1.2.3.4"))
+    nu = run(spksonos.now("1.2.3.4"))
     equal("titel", nu["titel"], "FE!N")
     equal("artiest", nu["artiest"], "Travis Scott")
     equal("album is de albumtitel, niet de hoes-URL", nu["album"], "UTOPIA")
@@ -303,39 +304,39 @@ def test_nu_speelt():
 def test_radio_titel():
     """Bij radio is dc:title de bestandsnaam van de stream, niet de zender."""
     check("een streambestandsnaam wordt herkend",
-          mzsonos.lijkt_stream_id(
+          spksonos.lijkt_stream_id(
               "vrt-radio1-aac-128-4855518?sABC=6n8&amsparams=x"))
-    check("een gewone titel niet", not mzsonos.lijkt_stream_id("FE!N"))
+    check("een gewone titel niet", not spksonos.lijkt_stream_id("FE!N"))
     check("een lange titel met spaties ook niet",
-          not mzsonos.lijkt_stream_id("Bohemian Rhapsody, remastered edition"))
-    check("leeg is geen stream-id", not mzsonos.lijkt_stream_id(""))
+          not spksonos.lijkt_stream_id("Bohemian Rhapsody, remastered edition"))
+    check("leeg is geen stream-id", not spksonos.lijkt_stream_id(""))
 
     net = verse_net()
     net.antwoorden["GetPositionInfo"] = soap_antwoord(
-        "<TrackMetaData>" + mzsonos.esc(
+        "<TrackMetaData>" + spksonos.esc(
             "<DIDL-Lite><item><r:streamContent></r:streamContent>"
             "<dc:title>vrt-radio1-aac-128-4855518?sABC=6n8</dc:title>"
             "</item></DIDL-Lite>") + "</TrackMetaData>")
     net.antwoorden["GetMediaInfo"] = soap_antwoord(
-        "<CurrentURIMetaData>" + mzsonos.esc(
+        "<CurrentURIMetaData>" + spksonos.esc(
             "<DIDL-Lite><item><dc:title>VRT Radio 1</dc:title>"
             "<upnp:class>object.item.audioItem.audioBroadcast</upnp:class>"
             "</item></DIDL-Lite>") + "</CurrentURIMetaData>")
-    nu = run(mzsonos.now("1.2.3.4"))
+    nu = run(spksonos.now("1.2.3.4"))
     equal("de zendernaam komt op het scherm", nu["titel"], "VRT Radio 1")
 
     net = verse_net()
     net.antwoorden["GetPositionInfo"] = soap_antwoord(
-        "<TrackMetaData>" + mzsonos.esc(
+        "<TrackMetaData>" + spksonos.esc(
             "<DIDL-Lite><item>"
             "<r:streamContent>Yasmine - Ik hou van u</r:streamContent>"
             "<dc:title>vrt-radio1-aac-128?x=1</dc:title></item></DIDL-Lite>")
         + "</TrackMetaData>")
     net.antwoorden["GetMediaInfo"] = soap_antwoord(
-        "<CurrentURIMetaData>" + mzsonos.esc(
+        "<CurrentURIMetaData>" + spksonos.esc(
             "<DIDL-Lite><item><dc:title>VRT Radio 1</dc:title></item></DIDL-Lite>")
         + "</CurrentURIMetaData>")
-    nu = run(mzsonos.now("1.2.3.4"))
+    nu = run(spksonos.now("1.2.3.4"))
     equal("wat er klinkt staat voorop", nu["titel"], "Yasmine - Ik hou van u")
     equal("en de zender als artiest", nu["artiest"], "VRT Radio 1")
 
@@ -343,7 +344,7 @@ def test_radio_titel():
     # mag dan geen extra call naar GetMediaInfo gaan.
     net = verse_net()
     net.antwoorden["GetPositionInfo"] = soap_antwoord(POSITION_INFO)
-    nu = run(mzsonos.now("1.2.3.4"))
+    nu = run(spksonos.now("1.2.3.4"))
     equal("een gewone titel blijft staan", nu["titel"], "FE!N")
     check("en er is geen extra call nodig",
           "GetMediaInfo" not in net.acties)
@@ -353,9 +354,9 @@ def test_upnp_fout():
     net = verse_net()
     net.antwoorden["Play"] = (500, "<errorCode>701</errorCode>")
     try:
-        run(mzsonos.play("1.2.3.4"))
+        run(spksonos.play("1.2.3.4"))
         check("UPnP-fout wordt opgegooid", False)
-    except mzsonos.SonosError as e:
+    except spksonos.SonosError as e:
         check("de foutcode staat in de boodschap", "701" in str(e))
 
 
@@ -367,9 +368,9 @@ def test_play_spotify_volgorde():
         "<NumTracksAdded>16</NumTracksAdded>")
     net.antwoorden["ListAvailableServices"] = soap_antwoord(
         "<AvailableServiceDescriptorList>"
-        + mzsonos.esc('<Service Id="9" Name="Spotify"/>')
+        + spksonos.esc('<Service Id="9" Name="Spotify"/>')
         + "</AvailableServiceDescriptorList>")
-    aantal = run(mzsonos.play_spotify("1.2.3.4", "spotify:playlist:XYZ",
+    aantal = run(spksonos.play_spotify("1.2.3.4", "spotify:playlist:XYZ",
                                       shuffle=True, titel="Oki",
                                       speler_uid="RINCON_ZZZ01400"))
     equal("aantal toegevoegde nummers", aantal, 16)
@@ -410,10 +411,10 @@ def test_verdwenen_playlist():
         "<AvailableServiceDescriptorList></AvailableServiceDescriptorList>")
     net.antwoorden["AddURIToQueue"] = (500, "<errorCode>804</errorCode>")
     try:
-        run(mzsonos.play_spotify("1.2.3.4", "spotify:playlist:WEG",
+        run(spksonos.play_spotify("1.2.3.4", "spotify:playlist:WEG",
                                  speler_uid="RINCON_Z"))
         check("804 wordt opgegooid", False)
-    except mzsonos.SonosError as e:
+    except spksonos.SonosError as e:
         equal("804 krijgt een leesbare boodschap", str(e),
               "Spotify kent deze lijst niet meer")
 
@@ -422,22 +423,22 @@ def test_servicenummer():
     net = verse_net()
     net.antwoorden["ListAvailableServices"] = soap_antwoord(
         "<AvailableServiceDescriptorList>"
-        + mzsonos.esc('<Service Id="12" Name="Spotify"/>'
+        + spksonos.esc('<Service Id="12" Name="Spotify"/>'
                       '<Service Id="254" Name="TuneIn"/>')
         + "</AvailableServiceDescriptorList>")
-    equal("Id 12 geeft 3079", run(mzsonos.spotify_sn("1.2.3.4")), 3079)
+    equal("Id 12 geeft 3079", run(spksonos.spotify_sn("1.2.3.4")), 3079)
     net = verse_net()
     net.antwoorden["ListAvailableServices"] = soap_antwoord(
         "<AvailableServiceDescriptorList>"
-        + mzsonos.esc('<Service Id="254" Name="TuneIn"/>')
+        + spksonos.esc('<Service Id="254" Name="TuneIn"/>')
         + "</AvailableServiceDescriptorList>")
-    equal("zonder Spotify de terugval", run(mzsonos.spotify_sn("1.2.3.4")), 2311)
+    equal("zonder Spotify de terugval", run(spksonos.spotify_sn("1.2.3.4")), 2311)
 
 
 def test_favorieten():
     net = verse_net()
     net.antwoorden["Browse"] = soap_antwoord("<Result>" + FAVORITES_DIDL + "</Result>")
-    favs = run(mzsonos.favorites("1.2.3.4"))
+    favs = run(spksonos.favorites("1.2.3.4"))
     equal("alleen favorieten met een res", len(favs), 1)
     equal("titel", favs[0]["titel"], "Oki")
     check("res is een containerlink",
@@ -450,14 +451,14 @@ def test_favorieten():
 def test_alarmen_lezen():
     net = verse_net()
     net.antwoorden["ListAlarms"] = soap_antwoord(
-        "<CurrentAlarmList>" + mzsonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
-    allemaal = run(mzsonos.alarms("1.2.3.4"))
+        "<CurrentAlarmList>" + spksonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
+    allemaal = run(spksonos.alarms("1.2.3.4"))
     equal("drie alarmen in het huishouden", len(allemaal), 3)
 
     net = verse_net()
     net.antwoorden["ListAlarms"] = soap_antwoord(
-        "<CurrentAlarmList>" + mzsonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
-    mijne = run(mzsonos.alarms("1.2.3.4", room_uuid="RINCON_CCC01400"))
+        "<CurrentAlarmList>" + spksonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
+    mijne = run(spksonos.alarms("1.2.3.4", room_uuid="RINCON_CCC01400"))
     equal("twee voor deze kamer", len(mijne), 2)
     equal("op tijd gesorteerd", [a["tijd"] for a in mijne], ["06:59", "07:15"])
     equal("tijd zonder seconden", mijne[0]["tijd"], "06:59")
@@ -468,32 +469,32 @@ def test_alarmen_lezen():
 
 
 def test_herhaling_tekst():
-    equal("weekdagen", mzsonos.recurrence_text("WEEKDAYS"), "weekdagen")
-    equal("eenmalig", mzsonos.recurrence_text("ONCE"), "eenmalig")
-    equal("elke dag", mzsonos.recurrence_text("DAILY"), "elke dag")
-    equal("ON_06 is het weekend", mzsonos.recurrence_text("ON_06"), "zz")
+    equal("weekdagen", spksonos.recurrence_text("WEEKDAYS"), "weekdagen")
+    equal("eenmalig", spksonos.recurrence_text("ONCE"), "eenmalig")
+    equal("elke dag", spksonos.recurrence_text("DAILY"), "elke dag")
+    equal("ON_06 is het weekend", spksonos.recurrence_text("ON_06"), "zz")
     equal("ON_12345 zijn de weekdagen",
-          mzsonos.recurrence_text("ON_12345"), "mdwdv")
-    equal("leeg ON_ is eenmalig", mzsonos.recurrence_text("ON_"), "eenmalig")
+          spksonos.recurrence_text("ON_12345"), "mdwdv")
+    equal("leeg ON_ is eenmalig", spksonos.recurrence_text("ON_"), "eenmalig")
 
 
 def test_tijd_verschuiven():
-    equal("vijf erbij", mzsonos._shift_time("07:00", 5), "07:05")
-    equal("vijf eraf", mzsonos._shift_time("07:00", -5), "06:55")
-    equal("over het uur", mzsonos._shift_time("07:55", 10), "08:05")
-    equal("over middernacht", mzsonos._shift_time("23:58", 5), "00:03")
-    equal("onder middernacht", mzsonos._shift_time("00:02", -5), "23:57")
+    equal("vijf erbij", spksonos._shift_time("07:00", 5), "07:05")
+    equal("vijf eraf", spksonos._shift_time("07:00", -5), "06:55")
+    equal("over het uur", spksonos._shift_time("07:55", 10), "08:05")
+    equal("over middernacht", spksonos._shift_time("23:58", 5), "00:03")
+    equal("onder middernacht", spksonos._shift_time("00:02", -5), "23:57")
 
 
 def test_alarm_bijwerken():
     net = verse_net()
     net.antwoorden["ListAlarms"] = soap_antwoord(
-        "<CurrentAlarmList>" + mzsonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
-    alarm = run(mzsonos.alarms("1.2.3.4", room_uuid="RINCON_CCC01400"))[0]
+        "<CurrentAlarmList>" + spksonos.esc(ALARM_LIST) + "</CurrentAlarmList>")
+    alarm = run(spksonos.alarms("1.2.3.4", room_uuid="RINCON_CCC01400"))[0]
 
     net.acties = []
     net.calls = []
-    run(mzsonos.update_alarm("1.2.3.4", alarm, aan=True, tijd="07:30"))
+    run(spksonos.update_alarm("1.2.3.4", alarm, aan=True, tijd="07:30"))
     body = net.soap_body("UpdateAlarm")
 
     # ListAlarms noemt het veld StartTime, UpdateAlarm noemt het
@@ -520,7 +521,7 @@ def test_alarm_bijwerken():
     equal("en staat aan", alarm["aan"], True)
 
     net.calls = []
-    run(mzsonos.update_alarm("1.2.3.4", alarm, aan=False))
+    run(spksonos.update_alarm("1.2.3.4", alarm, aan=False))
     body = net.soap_body("UpdateAlarm")
     check("uitschakelen laat de tijd staan",
           "<StartLocalTime>07:30:00</StartLocalTime>" in body)
@@ -531,8 +532,8 @@ def test_alarm_bijwerken():
 
 def test_spotify_playlists():
     net = verse_net()
-    mzspotify._token = None
-    mzspotify._token_tot = None
+    spkspotify._token = None
+    spkspotify._token_tot = None
     net.http_antwoorden[("accounts.spotify.com", "/api/token")] = (
         200, json.dumps({"access_token": "AT", "expires_in": 3600}))
     pagina2 = "https://api.spotify.com/v1/me/playlists?offset=50&limit=50"
@@ -542,7 +543,7 @@ def test_spotify_playlists():
             None,
             {"name": "Ochtend", "uri": "spotify:playlist:OCH", "tracks": {"total": 20}},
         ], "next": None}))
-    lijst = run(mzspotify.playlists("cid", "rt"))
+    lijst = run(spkspotify.playlists("cid", "rt"))
     equal("twee playlists, de None overgeslagen", len(lijst), 2)
     equal("naam", lijst[0]["naam"], "Oki")
     equal("uri", lijst[0]["uri"], "spotify:playlist:OKI")
@@ -557,52 +558,52 @@ def test_spotify_playlists():
 
 
 def test_spotify_zonder_config():
-    mzspotify._token = None
+    spkspotify._token = None
     try:
-        run(mzspotify.access_token("", ""))
+        run(spkspotify.access_token("", ""))
         check("zonder sleutels een nette fout", False)
-    except mzspotify.SpotifyError as e:
+    except spkspotify.SpotifyError as e:
         equal("de boodschap is voor het scherm", str(e), "Spotify is niet ingesteld")
 
 
 def test_cache_pad():
     """De badge heeft geen /cache, ook al noemen de docs het. Gemeten:
     [Errno 2] ENOENT bij elke poging de playlists te bewaren."""
-    oud = mzspotify.CACHE_MAPPEN
+    oud = spkspotify.CACHE_MAPPEN
     try:
-        mzspotify.CACHE_MAPPEN = ("/bestaat/niet", "/tmp")
-        pad = mzspotify.cache_pad()
+        spkspotify.CACHE_MAPPEN = ("/bestaat/niet", "/tmp")
+        pad = spkspotify.cache_pad()
         check("valt terug op een map die er wel is",
-              pad == "/tmp/" + mzspotify.CACHE_BESTAND)
-        mzspotify.CACHE_MAPPEN = ("/bestaat/niet/en/valt/niet/te/maken",)
-        equal("zonder bruikbare map geeft hij None", mzspotify.cache_pad(), None)
+              pad == "/tmp/" + spkspotify.CACHE_BESTAND)
+        spkspotify.CACHE_MAPPEN = ("/bestaat/niet/en/valt/niet/te/maken",)
+        equal("zonder bruikbare map geeft hij None", spkspotify.cache_pad(), None)
     finally:
-        mzspotify.CACHE_MAPPEN = oud
+        spkspotify.CACHE_MAPPEN = oud
 
 
 def test_cache_zonder_pad_zwijgt():
-    oud = mzspotify.CACHE
+    oud = spkspotify.CACHE
     try:
-        mzspotify.CACHE = None
-        equal("lezen zonder cache geeft leeg", mzspotify.cache_lezen(), [])
+        spkspotify.CACHE = None
+        equal("lezen zonder cache geeft leeg", spkspotify.cache_lezen(), [])
         equal("schrijven zonder cache is geen fout",
-              mzspotify.cache_schrijven([{"naam": "A"}]), False)
+              spkspotify.cache_schrijven([{"naam": "A"}]), False)
     finally:
-        mzspotify.CACHE = oud
+        spkspotify.CACHE = oud
 
 
 def test_spotify_cache(tmp="/tmp/muziek_playlists_test.json"):
-    oud = mzspotify.CACHE
-    mzspotify.CACHE = tmp
+    oud = spkspotify.CACHE
+    spkspotify.CACHE = tmp
     try:
-        check("schrijven lukt", mzspotify.cache_schrijven([{"naam": "A"}]))
-        equal("en lezen geeft het terug", mzspotify.cache_lezen(), [{"naam": "A"}])
-        mzspotify.CACHE = "/nergens/dat/bestaat/x.json"
-        equal("een onleesbare cache is geen fout", mzspotify.cache_lezen(), [])
+        check("schrijven lukt", spkspotify.cache_schrijven([{"naam": "A"}]))
+        equal("en lezen geeft het terug", spkspotify.cache_lezen(), [{"naam": "A"}])
+        spkspotify.CACHE = "/nergens/dat/bestaat/x.json"
+        equal("een onleesbare cache is geen fout", spkspotify.cache_lezen(), [])
         equal("een onschrijfbare cache ook niet",
-              mzspotify.cache_schrijven([{"naam": "A"}]), False)
+              spkspotify.cache_schrijven([{"naam": "A"}]), False)
     finally:
-        mzspotify.CACHE = oud
+        spkspotify.CACHE = oud
         try:
             os.remove(tmp)
         except OSError:
@@ -629,7 +630,7 @@ def test_zone_keuze_wordt_onthouden():
     verse_state()
     net = verse_net()
     net.antwoorden["GetZoneGroupState"] = soap_antwoord(
-        "<ZoneGroupState>" + mzsonos.esc(ZONE_STATE) + "</ZoneGroupState>")
+        "<ZoneGroupState>" + spksonos.esc(ZONE_STATE) + "</ZoneGroupState>")
     net.antwoorden["GetPositionInfo"] = soap_antwoord(POSITION_INFO)
 
     run(state.zoek_zones())
@@ -653,7 +654,7 @@ def test_gegroepeerde_box_stuurt_naar_de_baas():
     verse_state()
     net = verse_net()
     net.antwoorden["GetZoneGroupState"] = soap_antwoord(
-        "<ZoneGroupState>" + mzsonos.esc(ZONE_STATE) + "</ZoneGroupState>")
+        "<ZoneGroupState>" + spksonos.esc(ZONE_STATE) + "</ZoneGroupState>")
     run(state.zoek_zones())
     bedroom = [z for z in state.zones if z["naam"] == "Bedroom"][0]
     state.kies_zone(bedroom)
@@ -674,7 +675,7 @@ def test_geen_sonos():
 
     async def geen(ms=0):
         return {}
-    mzsonos.discover = geen
+    spksonos.discover = geen
     run(state.zoek_zones())
     equal("geen zones", state.zones, [])
     equal("en het scherm zegt het", state.status, "geen Sonos gevonden")
@@ -686,7 +687,7 @@ def test_taak_vangt_fouten():
     boodschappen = []
 
     async def stuk():
-        raise mzsonos.SonosError("box weg")
+        raise spksonos.SonosError("box weg")
 
     async def draaien():
         t = state.taak(stuk())
@@ -730,6 +731,14 @@ def met_scherm(klasse):
     return scherm, opgevangen, echt
 
 
+def knop_tekst(knop):
+    """De tekst van een knop staat op het label eronder, niet op de knop zelf."""
+    for kind in getattr(knop, "children", []):
+        if kind.text:
+            return kind.text
+    return ""
+
+
 def alle_knoppen(obj, uit=None):
     """Alles wat op een tik reageert. Een schakelaar hangt aan VALUE_CHANGED en
     telt hier dus niet mee, anders zou een rij met een schakelaar erbij een knop
@@ -746,12 +755,12 @@ def alle_knoppen(obj, uit=None):
 
 
 def test_speler_scherm():
-    scherm, taken, echt = met_scherm(Muziek)
+    scherm, taken, echt = met_scherm(Speakers)
     try:
         equal("bij het eerste tonen wordt er opgestart", taken.namen, ["opstarten"])
         knoppen = alle_knoppen(scherm._view)
-        equal("acht knoppen: naam, verversen, drie transport, twee volume, "
-              "playlists en wekkers", len(knoppen), 9)
+        equal("tien knoppen: naam, verversen, drie transport, twee volume, "
+              "playlists, radio en wekkers", len(knoppen), 10)
         for k in knoppen:
             if k.size:
                 check("knop is minstens 38 hoog, anders mis je hem met een vinger",
@@ -792,7 +801,7 @@ def test_speler_scherm():
 
 
 def test_speler_zonder_zone_opent_niets():
-    scherm, taken, echt = met_scherm(Muziek)
+    scherm, taken, echt = met_scherm(Speakers)
     try:
         state.zone = None
         state._wijzig()
@@ -842,7 +851,7 @@ def test_gekozen_box_is_leesbaar():
 
 
 def test_zones_scherm():
-    scherm, taken, echt = met_scherm(MuziekZones)
+    scherm, taken, echt = met_scherm(SpeakerZones)
     try:
         equal("een leeg scherm gaat zelf zoeken", taken.namen, ["zoek_zones"])
         state.zones = [
@@ -876,7 +885,7 @@ def test_zones_scherm():
 
 
 def test_playlists_scherm():
-    scherm, taken, echt = met_scherm(MuziekLijsten)
+    scherm, taken, echt = met_scherm(SpeakerLijsten)
     try:
         equal("met Spotify ingesteld begint hij daar", scherm._bron, "spotify")
         equal("en haalt hij de lijsten op", taken.namen, ["ververs_lijsten"])
@@ -940,7 +949,7 @@ def test_playlists_scherm():
 
 
 def test_wekkers_scherm():
-    scherm, taken, echt = met_scherm(MuziekWekkers)
+    scherm, taken, echt = met_scherm(SpeakerWekkers)
     try:
         equal("een leeg scherm haalt de wekkers op", taken.namen, ["ververs_wekkers"])
         state.zones = [{"uid": "U1", "ip": "1.1.1.1", "naam": "Slaapkamer",
@@ -997,7 +1006,7 @@ ONTBREKENDE_RE = ("finditer", "findall", "fullmatch", "escape")
 
 
 def test_alleen_bestaande_methodes():
-    app = os.path.join(ROOT, "be.weyn.muziek")
+    app = os.path.join(ROOT, "tech.weyn.speakers")
     for bestand in sorted(os.listdir(app)):
         if not bestand.endswith(".py"):
             continue
@@ -1030,14 +1039,14 @@ def test_alleen_bestaande_methodes():
 
 def test_geen_geheimen_in_de_repo():
     """Het sjabloon hoort in git, de ingevulde kopie niet."""
-    app = os.path.join(ROOT, "be.weyn.muziek")
+    app = os.path.join(ROOT, "tech.weyn.speakers")
     check("het sjabloon bestaat",
-          os.path.exists(os.path.join(app, "muziek_config.example.py")))
+          os.path.exists(os.path.join(app, "speakers_config.example.py")))
     with open(os.path.join(ROOT, ".gitignore")) as f:
         genegeerd = f.read()
-    check("muziek_config.py staat in .gitignore",
-          "be.weyn.muziek/muziek_config.py" in genegeerd)
-    with open(os.path.join(app, "muziek_config.example.py")) as f:
+    check("speakers_config.py staat in .gitignore",
+          "tech.weyn.speakers/speakers_config.py" in genegeerd)
+    with open(os.path.join(app, "speakers_config.example.py")) as f:
         sjabloon = f.read()
     # Een sjabloon met een echte sleutel erin is precies wat we willen vermijden.
     for regel in sjabloon.split("\n"):
@@ -1047,12 +1056,12 @@ def test_geen_geheimen_in_de_repo():
 
 
 def test_manifest():
-    with open(os.path.join(ROOT, "be.weyn.muziek", "MANIFEST.JSON")) as f:
+    with open(os.path.join(ROOT, "tech.weyn.speakers", "MANIFEST.JSON")) as f:
         m = json.load(f)
-    equal("fullname klopt met de map", m["fullname"], "be.weyn.muziek")
-    equal("de launcher start muziek.py", m["activities"][0]["entrypoint"],
-          "muziek.py")
-    equal("met klasse Muziek", m["activities"][0]["classname"], "Muziek")
+    equal("fullname klopt met de map", m["fullname"], "tech.weyn.speakers")
+    equal("de launcher start speakers.py", m["activities"][0]["entrypoint"],
+          "speakers.py")
+    equal("met klasse Speakers", m["activities"][0]["classname"], "Speakers")
     check("hij staat in de launcher",
           {"action": "main", "category": "launcher"}
           in m["activities"][0]["intent_filters"])
@@ -1061,12 +1070,196 @@ def test_manifest():
 
 # --- uitvoeren -------------------------------------------------------------
 
+def test_voorkeuren_overnemen_van_de_oude_naam():
+    """De app heette be.weyn.muziek. Voorkeuren hangen aan het app-id, dus
+    zonder overnemen is de gekozen box weg, en dat merk je pas als de muziek in
+    de verkeerde kamer begint."""
+    verse_state()
+    import mpos.config
+    oud = mpos.config.SharedPreferences("be.weyn.muziek").edit()
+    oud.put_string("zone_uid", "RINCON_AAA")
+    oud.put_string("zone_ip", "192.168.68.60")
+    oud.put_string("zone_naam", "Bathroom")
+    oud.put_int("spotify_sn", 7)
+    oud.commit()
+
+    equal("er valt iets over te nemen", state.prefs_migreren(), True)
+    p = state.prefs_lezen()
+    equal("de box is mee op uid", p["uid"], "RINCON_AAA")
+    equal("en zijn naam ook", p["naam"], "Bathroom")
+    equal("het servicenummer is mee", p["sn"], 7)
+    equal("een tweede keer neemt niets meer over",
+          state.prefs_migreren(), False)
+    mpos.config._STORE.clear()
+    equal("zonder oude voorkeuren valt er niets over te nemen",
+          state.prefs_migreren(), False)
+
+
+# --- 6. radio ----------------------------------------------------------------
+
+RADIO_DIDL = (
+    "&lt;DIDL-Lite&gt;"
+    "&lt;item id=&quot;FV:2/30&quot;&gt;&lt;dc:title&gt;VRT Radio 1&lt;/dc:title&gt;"
+    "&lt;res protocolInfo=&quot;x-sonosapi-stream:*:*:*&quot;&gt;"
+    "x-sonosapi-stream:vrt1?sid=254&amp;amp;flags=8224"
+    "&lt;/res&gt;&lt;r:resMD&gt;&lt;DIDL-Lite&gt;&lt;item&gt;"
+    "&lt;dc:title&gt;VRT Radio 1&lt;/dc:title&gt;"
+    "&lt;upnp:class&gt;object.item.audioItem.audioBroadcast&lt;/upnp:class&gt;"
+    "&lt;/item&gt;&lt;/DIDL-Lite&gt;"
+    "&lt;/r:resMD&gt;&lt;/item&gt;"
+    "&lt;item id=&quot;FV:2/20&quot;&gt;&lt;dc:title&gt;Oki&lt;/dc:title&gt;"
+    "&lt;res protocolInfo=&quot;x-rincon-cpcontainer:*:*:*&quot;&gt;"
+    "x-rincon-cpcontainer:1006286cspotify%3Aplaylist%3AOKI1"
+    "&lt;/res&gt;&lt;r:resMD&gt;&lt;DIDL-Lite&gt;&lt;item&gt;"
+    "&lt;dc:title&gt;Oki&lt;/dc:title&gt;&lt;/item&gt;"
+    "&lt;/r:resMD&gt;&lt;/item&gt;"
+    "&lt;/DIDL-Lite&gt;"
+)
+
+
+def test_zender_herkennen():
+    check("een audioBroadcast in de resMD is een zender",
+          spksonos.is_stream({"res": "x-rincon-cpcontainer:iets",
+                              "resmd": "<upnp:class>object.item.audioItem"
+                                       ".audioBroadcast</upnp:class>"}))
+    check("x-sonosapi-stream is een zender",
+          spksonos.is_stream({"res": "x-sonosapi-stream:vrt1", "resmd": ""}))
+    check("een mp3-stream ook",
+          spksonos.is_stream({"res": "x-rincon-mp3radio://host/vrt1", "resmd": ""}))
+    check("een playlistcontainer niet",
+          not spksonos.is_stream({"res": "x-rincon-cpcontainer:1006286cspotify",
+                                  "resmd": "<upnp:class>object.container"
+                                           "</upnp:class>"}))
+    check("en niets is ook geen zender", not spksonos.is_stream({}))
+
+
+def test_zender_gaat_niet_in_de_wachtrij():
+    """Dit is de bug die VRT 1 stil hield.
+
+    Sonos neemt de AddURIToQueue van een stream gewoon aan en speelt dan niets,
+    dus het leek op een kapotte favoriet. Een zender hoort rechtstreeks op de
+    speler, zonder wachtrij en zonder Seek: er is geen nummer 1 om naartoe te
+    springen."""
+    net = verse_net()
+    zender = {"titel": "VRT Radio 1", "res": "x-sonosapi-stream:vrt1?sid=254",
+              "resmd": "<DIDL-Lite><item><upnp:class>object.item.audioItem"
+                       ".audioBroadcast</upnp:class></item></DIDL-Lite>"}
+    run(spksonos.play_favorite("1.2.3.4", zender, speler_uid="U1"))
+    equal("rechtstreeks op de speler, dan spelen",
+          net.acties, ["SetAVTransportURI", "Play"])
+    body = [b for h, m, pad, b in net.calls
+            if b and "SetAVTransportURI" in str(b)][0]
+    body = body.decode() if isinstance(body, bytes) else body
+    check("de zender-URI staat erin", "x-sonosapi-stream:vrt1" in body)
+    check("en zijn metadata ook", "audioBroadcast" in body)
+
+    net = verse_net()
+    lijst = {"titel": "Oki", "res": "x-rincon-cpcontainer:1006286cspotify",
+             "resmd": "<DIDL-Lite><item></item></DIDL-Lite>"}
+    run(spksonos.play_favorite("1.2.3.4", lijst, speler_uid="U1"))
+    check("een gewone favoriet gaat wel door de wachtrij",
+          "AddURIToQueue" in net.acties and "Seek" in net.acties)
+
+
+def test_radioscherm_toont_alleen_zenders():
+    verse_state()
+    net = verse_net()
+    net.antwoorden["Browse"] = soap_antwoord("<Result>" + RADIO_DIDL + "</Result>")
+    state.zones = [{"uid": "U1", "ip": "1.2.3.4", "naam": "Keuken",
+                    "baas": True, "coordinator": "U1"}]
+    state.zone = state.zones[0]
+    run(state.ververs_favorieten())
+    equal("twee favorieten opgehaald", len(state.favorieten), 2)
+    zenders = state.radiozenders()
+    equal("waarvan een zender", len(zenders), 1)
+    equal("en dat is VRT Radio 1", zenders[0]["titel"], "VRT Radio 1")
+
+    # met_scherm begint met een verse state, dus de favorieten moeten er na
+    # het openen opnieuw in: dat is ook wat er echt gebeurt, want het scherm
+    # start zelf een ververstaak.
+    favorieten = list(state.favorieten)
+    scherm, taken, echt = met_scherm(SpeakerRadio)
+    try:
+        equal("het scherm vraagt zelf om de favorieten", taken.namen,
+              ["ververs_favorieten"])
+        state.favorieten = favorieten
+        state._wijzig()
+        scherm._teken()
+        knoppen = alle_knoppen(scherm._view)
+        titels = [knop_tekst(k) for k in knoppen]
+        check("de zender staat op een knop", "VRT Radio 1" in titels)
+        check("de playlist niet", "Oki" not in titels)
+        for k in knoppen:
+            if k.size:
+                check("een zenderknop is minstens 38 hoog", k.size[1] >= 38)
+        taken.namen = []
+        for k in knoppen:
+            if knop_tekst(k) == "VRT Radio 1":
+                k.click()
+        equal("tikken start het afspelen", len(taken.namen), 1)
+    finally:
+        state.taak = echt
+
+
+def test_radioknop_op_het_spelerscherm():
+    scherm, taken, echt = met_scherm(Speakers)
+    try:
+        mpos.STARTED.clear()
+        for k in alle_knoppen(scherm._view):
+            if knop_tekst(k) == "Radio":
+                k.click()
+        equal("de Radio-knop opent het radioscherm", len(mpos.STARTED), 1)
+        equal("en dat is SpeakerRadio",
+              mpos.STARTED[0].activity_class.__name__, "SpeakerRadio")
+        mpos.STARTED.clear()
+    finally:
+        state.taak = echt
+
+
+# --- 7. welk Spotify-account -------------------------------------------------
+
+def test_spotify_account_in_de_cdudn():
+    """Vier accounts op een gezinsabonnement betekent vier keer dezelfde dienst.
+
+    Het accountnummer is het enige verschil tussen "de lijst van papa" en "de
+    lijst van de kinderen", en het staat achteraan in de cdudn."""
+    md = spksonos.metadata("playlist", "spotify%3aplaylist%3aX", 3079, "Lijst")
+    check("zonder keuze blijft het nul", "#Svc3079-0-Token" in md)
+    md = spksonos.metadata("playlist", "spotify%3aplaylist%3aX", 3079, "Lijst",
+                           account="2")
+    check("met een keuze staat die erin", "#Svc3079-2-Token" in md)
+
+    verse_state()
+    import mpos.config
+    mpos.config.SharedPreferences(state.PREFS_APP_ID).edit().put_string(
+        "spotify_account", "3").commit()
+    equal("de badge onthoudt zijn eigen account", state.spotify_account(), "3")
+    equal("en een andere badge kan een andere kiezen",
+          state.kies_spotify_account("1"), True)
+    equal("die dan geldt", state.spotify_account(), "1")
+    mpos.config._STORE.clear()
+    equal("zonder keuze is het nul", state.spotify_account(), "0")
+
+
+def test_accounts_van_het_huishouden():
+    net = verse_net()
+    net.http_antwoorden[("1.2.3.4", "/status/accounts")] = (200, """
+      <ZPSupportInfo><Accounts>
+        <Account Type="519" SerialNum="1"><UN>maarten@example.be</UN></Account>
+        <Account Type="519" SerialNum="2"><UN>kinderen@example.be</UN></Account>
+      </Accounts></ZPSupportInfo>""")
+    gevonden = run(spksonos.accounts("1.2.3.4"))
+    equal("twee accounts", len(gevonden), 2)
+    equal("met hun serienummer", [a["serial"] for a in gevonden], ["1", "2"])
+    equal("en hun gebruikersnaam", gevonden[1]["gebruiker"], "kinderen@example.be")
+
+
 def main():
     for naam, fn in sorted(globals().items()):
         if naam.startswith("test_") and callable(fn):
             fn()
-            mzsonos.http = ECHTE_HTTP
-            mzsonos.discover = ECHTE_DISCOVER
+            spksonos.http = ECHTE_HTTP
+            spksonos.discover = ECHTE_DISCOVER
     print("\n%d checks, %d mislukt" % (CHECKS["n"], len(FAILURES)))
     for f in FAILURES:
         print("  -", f)

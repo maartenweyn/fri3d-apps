@@ -21,6 +21,7 @@ Gebruik:
     ./sonos_probe.py prev      192.168.0.42
     ./sonos_probe.py volume    192.168.0.42 35
     ./sonos_probe.py favorites 192.168.0.42
+    ./sonos_probe.py accounts  192.168.0.42     # welke Spotify-accounts staan erop?
 """
 
 import re
@@ -342,6 +343,28 @@ def favorites(ip):
     return out
 
 
+def accounts(ip):
+    """De accounts die op dit huishouden staan.
+
+    Een gezinsabonnement zet vier Spotify-accounts op dezelfde Sonos. Ze delen
+    dan een service-id, en het serienummer is het enige dat ze uit elkaar houdt.
+    Dat nummer hoort achteraan in de cdudn, en het is dus ook wat een badge moet
+    bewaren om de playlists van zijn eigen account te spelen.
+
+    Geen SOAP: een gewone GET op /status/accounts.
+    """
+    body = http_get("http://%s:%d/status/accounts" % (ip, PORT))
+    out = []
+    for blok in re.findall(r"<Account .*?(?:</Account>|/>)", body, re.S):
+        soort = re.search(r'Type="([0-9]+)"', blok)
+        serie = re.search(r'SerialNum="([0-9]+)"', blok)
+        naam = re.search(r"<UN>(.*?)</UN>", blok)
+        out.append({"type": soort.group(1) if soort else "?",
+                    "serial": serie.group(1) if serie else "?",
+                    "user": xml_unescape(naam.group(1)) if naam else ""})
+    return out
+
+
 # --------------------------------------------------------------------------
 
 def main(argv):
@@ -411,11 +434,51 @@ def main(argv):
     elif cmd == "favorites":
         for title, res in favorites(ip):
             print("{0:<40} {1}".format(title[:40], res[:60]))
+    elif cmd == "accounts":
+        gevonden = accounts(ip)
+        if not gevonden:
+            print("geen accounts gemeld door deze speler")
+        for a in gevonden:
+            print("type {0:<6} serial {1:<4} {2}".format(
+                a["type"], a["serial"], a["user"]))
+        print()
+        print("Het serienummer hierboven is wat een badge bewaart als")
+        print("spotify_account. Welke van deze bij Spotify hoort zie je aan het")
+        print("type; vergelijk met: ./sonos_probe.py services " + ip)
     else:
         print(__doc__)
         return 1
     return 0
 
 
+class Onbereikbaar(RuntimeError):
+    """Er antwoordde niets op dit adres."""
+
+
+def _uitleg_onbereikbaar(argv):
+    ip = argv[2] if len(argv) > 2 else "<ip>"
+    print("Geen antwoord van {0} op poort {1}.".format(ip, PORT))
+    print()
+    print("Drie dingen die dit meestal zijn:")
+    print("  1. Het is geen Sonos-speler. Zoek het adres met")
+    print("     ./sonos_probe.py discover, of kijk in Home Assistant bij de")
+    print("     Sonos-integratie welk IP een speler heeft.")
+    print("  2. Je zit niet op hetzelfde netwerk. Een Tailscale-exitnode")
+    print("     routeert internetverkeer, geen LAN: daarvoor moet de knoop")
+    print("     thuis het subnet adverteren (--advertise-routes) en moet deze")
+    print("     machine die route aannemen (--accept-routes).")
+    print("  3. De speler staat uit.")
+    print()
+    print("Let op: discover gebruikt multicast en werkt dus alleen op het")
+    print("netwerk zelf, ook met een subnetroute erbij.")
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except (socket.timeout, TimeoutError, urllib.error.URLError, OSError) as e:
+        # Een kale traceback met "timed out" zegt niet welke van de drie het is.
+        _uitleg_onbereikbaar(sys.argv)
+        print()
+        print("(", type(e).__name__, e, ")")
+        sys.exit(1)

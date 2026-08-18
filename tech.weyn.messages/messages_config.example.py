@@ -1,10 +1,10 @@
 """Configuration for the Berichtjes app.
 
-Copy this file to `dinerbadge_config.py` and edit it. That copy is gitignored.
+Copy this file to `messages_config.py` and edit it. That copy is gitignored.
 
 Only two settings live here now, both about messages. The name of the badge, the
 broker address and the MQTT password moved to the Badge app
-(`be.weyn.badge/badge_config.example.py`), because they describe the badge and
+(`tech.weyn.badgecontroller/badge_config.example.py`), because they describe the badge and
 not this app. One badge, one connection, one place to set it up.
 
 Both values below are also editable on the badge itself, behind the gear button,

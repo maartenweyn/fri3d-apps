@@ -1,12 +1,12 @@
 """Configuratie voor de Muziek-app.
 
-Kopieer dit bestand naar `muziek_config.py` en vul het in. Die kopie is
+Kopieer dit bestand naar `speakers_config.py` en vul het in. Die kopie is
 gitignored, want er staat een Spotify refresh token in, en dat is een sleutel
 tot het account. Alleen dit sjabloon hoort in de repo.
 
-    cp be.weyn.muziek/muziek_config.example.py be.weyn.muziek/muziek_config.py
+    cp tech.weyn.muziek/speakers_config.example.py tech.weyn.muziek/speakers_config.py
 
-Zonder `muziek_config.py` werkt de app gewoon, alleen zonder de playlists uit
+Zonder `speakers_config.py` werkt de app gewoon, alleen zonder de playlists uit
 het Spotify-account. Wat er dan overblijft zijn de favorieten die in het
 Sonos-systeem zelf staan, en die hebben geen login nodig. De knop bovenaan het
 lijstscherm wisselt tussen beide.

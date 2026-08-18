@@ -14,7 +14,7 @@ try:
 except Exception:
     from mpos.config import SharedPreferences
 
-APP_ID = "be.fri3d.pomodoro"
+APP_ID = "tech.weyn.pomodoro"
 
 DEFAULTS = {
     "work_min": 25,
@@ -43,6 +43,63 @@ SWITCHES = (
     ("leds", "LEDs"),
     ("autostart", "Auto-start next"),
 )
+
+
+LEGACY_APP_ID = "be.fri3d.pomodoro"
+
+
+def migrate_prefs():
+    """Take over what was stored under the old app id, once.
+
+    Preferences hang off the app id, so renaming the app to tech.weyn.pomodoro
+    would silently reset everyone's durations, switches and today's count. This
+    runs on import rather than in onCreate, because both the timer and this
+    settings screen read preferences and either of them can be first.
+
+    A default of -1 tells "not stored" from "stored as zero". Sound off is a
+    zero worth keeping.
+    """
+    try:
+        prefs = SharedPreferences(APP_ID)
+        if prefs.get_int("work_min", 0):
+            return False
+        old = SharedPreferences(LEGACY_APP_ID)
+        editor = None
+        taken = []
+        for key in DEFAULTS:
+            value = old.get_int(key, -1)
+            if value < 0:
+                continue
+            if editor is None:
+                editor = prefs.edit()
+            editor.put_int(key, value)
+            taken.append(key)
+        for key in ("done_today", "round"):
+            value = old.get_int(key, -1)
+            if value < 0:
+                continue
+            if editor is None:
+                editor = prefs.edit()
+            editor.put_int(key, value)
+            taken.append(key)
+        day = old.get_string("day", "")
+        if day:
+            if editor is None:
+                editor = prefs.edit()
+            editor.put_string("day", day)
+            taken.append("day")
+        if editor is None:
+            return False
+        editor.commit()
+        print("pomodoro: settings carried over from %s:" % LEGACY_APP_ID,
+              ", ".join(taken))
+        return True
+    except Exception as e:
+        print("pomodoro: could not carry over the old settings:", e)
+        return False
+
+
+migrate_prefs()
 
 
 class PomodoroSettings(Activity):

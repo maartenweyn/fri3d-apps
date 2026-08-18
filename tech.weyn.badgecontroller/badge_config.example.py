@@ -4,7 +4,7 @@ Kopieer dit bestand naar `badge_config.py` en vul het in. Die kopie is
 gitignored, want het brokeradres en het MQTT-wachtwoord horen niet in een
 repository.
 
-    cp be.weyn.badge/badge_config.example.py be.weyn.badge/badge_config.py
+    cp tech.weyn.badgecontroller/badge_config.example.py tech.weyn.badgecontroller/badge_config.py
 
 Alles hieronder is ook op de badge zelf in te stellen, achter de Badge-app in de
 launcher, en wat daar staat wint. Dit bestand leeg laten is dus een prima keuze:

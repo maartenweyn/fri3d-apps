@@ -1,11 +1,11 @@
-"""Offline tests voor de Berichtjes-app (be.weyn.dinerbadge).
+"""Offline tests voor de Berichtjes-app (tech.weyn.messages).
 
 Draait op gewone Python tegen de stubs in tests/stubs/, zodat de berichtlogica en
 de schermlogica na te kijken zijn zonder badge en zonder broker.
 
-    python3 tests/test_dinerbadge.py
+    python3 tests/test_messages.py
 
-**De MQTT-kant staat hier niet meer in.** Die is verhuisd naar be.weyn.badge, en
+**De MQTT-kant staat hier niet meer in.** Die is verhuisd naar tech.weyn.badgecontroller, en
 wat daarover te testen valt staat in tests/test_badge.py: verbinden, de last
 will, het client-id uit het MAC, de discovery en de batterij. Wat hier overblijft
 is wat deze app zelf doet: een bericht aannemen, het tonen, en het bevestigen.
@@ -23,14 +23,14 @@ sys.dont_write_bytecode = True   # laat nooit __pycache__ in de app-map achter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-APP_DIR = os.path.join(ROOT, "be.weyn.dinerbadge")
+APP_DIR = os.path.join(ROOT, "tech.weyn.messages")
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 sys.path.insert(0, APP_DIR)
 
-_config = types.ModuleType("dinerbadge_config")
+_config = types.ModuleType("messages_config")
 _config.LED_ALERT = True
 _config.ACK_TIMEOUT_MIN = 30
-sys.modules["dinerbadge_config"] = _config
+sys.modules["messages_config"] = _config
 
 
 # --- de nep-brug ------------------------------------------------------------
@@ -101,10 +101,10 @@ import mpos.ui                                        # noqa: E402
 import mpos.config                                    # noqa: E402
 from mpos.lights import LightsManager                 # noqa: E402
 
-import dinerbadge_service as service                  # noqa: E402
-from dinerbadge_service import DinerBadgeService      # noqa: E402
-from dinerbadge import DinerBadge                     # noqa: E402
-from dbsettings import DinerBadgeSettings             # noqa: E402
+import messages_service as service                  # noqa: E402
+from messages_service import MessagesService      # noqa: E402
+from messages import Messages                     # noqa: E402
+from msgsettings import MessagesSettings             # noqa: E402
 
 FAILURES = []
 CHECKS = {"n": 0}
@@ -168,7 +168,7 @@ def fresh_service(met_brug=True):
     service.ACK_TIMEOUT_MIN = 30
     service.CHILD_NAME = "badge"
 
-    svc = DinerBadgeService()
+    svc = MessagesService()
     svc.onCreate()
     svc.onStart(None)
     svc._pump()          # de eerste pomp zoekt de brug en abonneert
@@ -215,7 +215,7 @@ equal("eerste bericht bewaard", service.last_message, "Eten over 10 minuten")
 equal("de teller begint op een", service.last_message_seq, 1)
 check("tijdstip genoteerd", service.last_message_time is not None)
 equal("een melding geplaatst", len(mpos.NotificationManager.posted), 1)
-equal("app naar de voorgrond", mpos.AppManager.started, ["be.weyn.dinerbadge"])
+equal("app naar de voorgrond", mpos.AppManager.started, ["tech.weyn.messages"])
 equal("alle vijf LEDs aan bij aankomst", LightsManager.lit(), 5)
 check("er staat een onbevestigd bericht", service.has_unacked())
 
@@ -227,11 +227,11 @@ equal("de melding draagt de tekst", posted.text, "Eten over 10 minuten")
 equal("de melding is hoge prioriteit", posted.priority,
       mpos.Notification.PRIORITY_HIGH)
 equal("de melding hoort bij deze app", posted.app_fullname,
-      "be.weyn.dinerbadge")
+      "tech.weyn.messages")
 check("het pictogram is een niet-lege string",
       isinstance(posted.icon, str) and posted.icon)
 equal("erop tikken opent deze app", posted.intent.app_fullname,
-      "be.weyn.dinerbadge")
+      "tech.weyn.messages")
 equal("de titel is de naam van de badge, met hoofdletter", posted.title, "Alice")
 
 # De voor de hand liggende manier om deze app te schrijven is de binnenkomende
@@ -331,7 +331,7 @@ svc.onStart(None)
 equal("twee keer starten geeft geen tweede lus",
       len(mpos.TaskManager.tasks), taken)
 
-tweede = DinerBadgeService()
+tweede = MessagesService()
 tweede.onCreate()
 equal("de nieuwe instantie is de service", service._service, tweede)
 equal("en de oude is stilgezet", svc._running, False)
@@ -343,7 +343,7 @@ equal("en de oude is stilgezet", svc._running, False)
 
 def fresh_screen():
     svc = fresh_service()
-    scherm = DinerBadge()
+    scherm = Messages()
     scherm.onCreate()
     scherm.onResume(scherm._view)
     return svc, scherm
@@ -410,7 +410,7 @@ for naam, knop in (("Ontvangen", scherm.ack_btn), ("tandwiel", scherm.gear_btn))
 # ===========================================================================
 
 svc = fresh_service()
-instellingen = DinerBadgeSettings()
+instellingen = MessagesSettings()
 instellingen.onCreate()
 instellingen.onResume(instellingen._view)
 
@@ -425,7 +425,7 @@ equal("drie rijen: badge, LEDs, stoppen na", instellingen.rows, 3)
 voor = len(mpos.AppManager.started)
 instellingen._open_badge()
 equal("de knop opent de Badge-app", mpos.AppManager.started[-1],
-      "be.weyn.badge")
+      "tech.weyn.badgecontroller")
 check("en start niet zichzelf", len(mpos.AppManager.started) == voor + 1)
 
 instellingen._cycle_timeout(-1)
@@ -446,7 +446,7 @@ equal("en de LED-instelling ook", service.LED_ALERT, False)
 # Zonder brug hoort het instelscherm te zeggen wat er scheelt, want anders komt
 # er niets binnen en legt niets uit waarom.
 svc = fresh_service(met_brug=False)
-instellingen = DinerBadgeSettings()
+instellingen = MessagesSettings()
 instellingen.onCreate()
 equal("het instelscherm klaagt over de ontbrekende app",
       instellingen.hint.text, "Badge-app draait niet")
@@ -456,7 +456,7 @@ equal("het instelscherm klaagt over de ontbrekende app",
 # Wat MicroPython niet heeft
 # ===========================================================================
 
-with open(os.path.join(APP_DIR, "dinerbadge_service.py")) as fh:
+with open(os.path.join(APP_DIR, "messages_service.py")) as fh:
     SOURCE = fh.read()
 check("de service bouwt geen widgets",
       "lv.obj(" not in SOURCE and "lv.label(" not in SOURCE)
@@ -489,6 +489,39 @@ for name in sorted(os.listdir(APP_DIR)):
 check("titlecase vervangt str.capitalize", service.titlecase("alice") == "Alice")
 check("titlecase overleeft een lege naam", service.titlecase("") == "")
 
+
+# ===========================================================================
+# Instellingen overnemen van de oude app-id
+# ===========================================================================
+# Voorkeuren hangen aan het app-id, dus de hernoeming naar tech.weyn.messages
+# zou de LED-keuze en de wachttijd stil terugzetten.
+
+mpos.config._STORE.clear()
+oud = mpos.config.SharedPreferences("be.weyn.dinerbadge").edit()
+oud.put_int("ack_timeout_min", 45)
+oud.put_int("led_alert", 0)      # uit is een bewuste nul
+oud.commit()
+
+equal("er valt iets over te nemen", service.migrate_prefs(), True)
+nieuw = mpos.config.SharedPreferences(service.PREFS_APP_ID)
+equal("de wachttijd is mee", nieuw.get_int("ack_timeout_min", 0), 45)
+equal("en de LEDs blijven uit", nieuw.get_int("led_alert", 1), 0)
+equal("een tweede keer neemt niets meer over", service.migrate_prefs(), False)
+
+# De naam van vanmiddag telt ook mee: tech.weyn.dinerbadge heeft een uur
+# bestaan, en een badge die in dat uur bijwerkte mag niets kwijt zijn.
+mpos.config._STORE.clear()
+kort = mpos.config.SharedPreferences("tech.weyn.dinerbadge").edit()
+kort.put_int("ack_timeout_min", 20)
+kort.commit()
+equal("ook de naam van een uur oud telt", service.migrate_prefs(), True)
+equal("en de wachttijd is mee",
+      mpos.config.SharedPreferences(service.PREFS_APP_ID).get_int(
+          "ack_timeout_min", 0), 20)
+
+mpos.config._STORE.clear()
+equal("zonder oude voorkeuren valt er niets over te nemen",
+      service.migrate_prefs(), False)
 
 # ===========================================================================
 

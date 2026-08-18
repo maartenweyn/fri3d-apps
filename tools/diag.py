@@ -10,7 +10,7 @@ import sys
 try:
     APP_ID
 except NameError:
-    APP_ID = "be.fri3d.pomodoro"
+    APP_ID = "tech.weyn.pomodoro"
 
 APP_DIR = "/apps/" + APP_ID
 

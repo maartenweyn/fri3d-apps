@@ -1,9 +1,9 @@
 """Berichtjes: the screen a child sees when a message arrives.
 
-The work happens in dinerbadge_service; this activity only renders the
+The work happens in messages_service; this activity only renders the
 service's state and sends the acknowledgement. It owns no MQTT connection of
 its own, so closing the app does not stop messages from arriving. The connection
-itself lives one app further along, in be.weyn.badge, which is why this screen
+itself lives one app further along, in tech.weyn.badgecontroller, which is why this screen
 can tell "no broker" apart from "no Badge app at all": those need different
 things done about them.
 """
@@ -12,8 +12,8 @@ import lvgl as lv
 
 from mpos import Activity, Intent
 
-import dinerbadge_service as service
-from dbsettings import DinerBadgeSettings
+import messages_service as service
+from msgsettings import MessagesSettings
 
 
 def _const(name, *spellings, **kw):
@@ -70,7 +70,7 @@ def _gear():
     return "cfg"
 
 
-class DinerBadge(Activity):
+class Messages(Activity):
 
     def __init__(self):
         super().__init__()
@@ -313,4 +313,4 @@ class DinerBadge(Activity):
         self._shown_seq = service.last_message_seq
 
     def _on_settings(self, event):
-        self.startActivity(Intent(activity_class=DinerBadgeSettings))
+        self.startActivity(Intent(activity_class=MessagesSettings))

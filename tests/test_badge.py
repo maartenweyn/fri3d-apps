@@ -1,11 +1,11 @@
-"""Offline tests voor de Badge-app (be.weyn.badge).
+"""Offline tests voor de Badge-app (tech.weyn.badgecontroller).
 
 Draait op gewone Python tegen de stubs in tests/stubs/, zodat de MQTT-brug, de
 telemetrie en de schermdimmer na te kijken zijn zonder badge en zonder broker.
 
     python3 tests/test_badge.py
 
-Het grootste deel van wat hier staat komt uit test_dinerbadge.py. Die code is
+Het grootste deel van wat hier staat komt uit test_messages.py. Die code is
 mee verhuisd met de verbinding: het brokeradres, de last will, het client-id uit
 het MAC en de discovery zijn eigenschappen van de badge en niet van een app die
 berichten toont. De commentaren zijn meegekomen, want daar staat in wat ze een
@@ -21,7 +21,7 @@ sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-APP_DIR = os.path.join(ROOT, "be.weyn.badge")
+APP_DIR = os.path.join(ROOT, "tech.weyn.badgecontroller")
 sys.path.insert(0, os.path.join(HERE, "stubs"))
 sys.path.insert(0, APP_DIR)
 
@@ -554,15 +554,20 @@ check("en apply_debug_led voor load_prefs", i_apply < i_load)
 
 
 # ===========================================================================
-# Instellingen overnemen van Berichtjes
+# Instellingen overnemen van een oudere naam van deze app
 # ===========================================================================
-# Deze badge is ooit op het toestel zelf ingesteld toen Berichtjes de verbinding
-# nog bezat. Zonder overnemen valt hij na een update terug op het configbestand
-# en moet iemand naam, broker, gebruiker en wachtwoord opnieuw intypen op een
-# aanraakscherm.
+# Deze verbinding heeft twee keer een andere naam gehad: eerst zat hij in
+# Berichtjes (be.weyn.dinerbadge), daarna in be.weyn.badge, en nu in
+# tech.weyn.badgecontroller. Voorkeuren hangen aan het app-id, dus zonder overnemen valt
+# een badge die al maanden hangt terug op het configbestand en moet iemand
+# naam, broker, gebruiker en wachtwoord opnieuw intypen op een aanraakscherm.
+
+equal("de nieuwste bron staat vooraan",
+      [bron for bron, _ in service.LEGACY_SOURCES],
+      ["tech.weyn.badge", "be.weyn.badge", "be.weyn.dinerbadge"])
 
 mpos.config._STORE.clear()
-oud = mpos.config.SharedPreferences(service.LEGACY_PREFS_APP_ID).edit()
+oud = mpos.config.SharedPreferences("be.weyn.dinerbadge").edit()
 oud.put_string("child_name", "badkamer")
 oud.put_string("mqtt_host", "192.168.68.10")
 oud.put_int("mqtt_port", 1884)
@@ -588,6 +593,46 @@ equal("en laat staan wat er stond",
 mpos.config._STORE.clear()
 equal("zonder oude voorkeuren valt er niets over te nemen",
       service.migrate_prefs(), False)
+
+# De hop van be.weyn.badge naar tech.weyn.badgecontroller. Daar heten de sleutels
+# hetzelfde, en er staan er twee meer: het scherm en het debug-lampje.
+mpos.config._STORE.clear()
+vorig = mpos.config.SharedPreferences("be.weyn.badge").edit()
+vorig.put_string("badge_name", "badkamer")
+vorig.put_string("mqtt_host", "192.168.68.100")
+vorig.put_int("mqtt_port", 1883)
+vorig.put_int("screen_off_s", 120)
+vorig.commit()
+
+equal("de vorige naam telt ook als bron", service.migrate_prefs(), True)
+nieuw = mpos.config.SharedPreferences(service.PREFS_APP_ID)
+equal("de naam is mee", nieuw.get_string("badge_name", ""), "badkamer")
+equal("de broker is mee", nieuw.get_string("mqtt_host", ""), "192.168.68.100")
+equal("en de schermtimeout ook", nieuw.get_int("screen_off_s", 0), 120)
+
+# De hop van vanmiddag: tech.weyn.badge bestond een uur, en een badge die in
+# dat uur is bijgewerkt mag zijn instellingen niet kwijt zijn.
+mpos.config._STORE.clear()
+kort = mpos.config.SharedPreferences("tech.weyn.badge").edit()
+kort.put_string("badge_name", "badkamer")
+kort.put_string("mqtt_pass", "geheim")
+kort.commit()
+equal("ook de naam van een uur oud telt", service.migrate_prefs(), True)
+equal("het wachtwoord is mee",
+      mpos.config.SharedPreferences(service.PREFS_APP_ID).get_string(
+          "mqtt_pass", ""), "geheim")
+
+# Staan er twee oude bronnen, dan wint de nieuwste. Anders zou een naam van
+# jaren geleden een recentere overschrijven.
+mpos.config._STORE.clear()
+mpos.config.SharedPreferences("be.weyn.dinerbadge").edit().put_string(
+    "child_name", "van toen").commit()
+mpos.config.SharedPreferences("be.weyn.badge").edit().put_string(
+    "badge_name", "van gisteren").commit()
+equal("er valt iets over te nemen", service.migrate_prefs(), True)
+equal("en dat is de nieuwste van de twee",
+      mpos.config.SharedPreferences(service.PREFS_APP_ID).get_string(
+          "badge_name", ""), "van gisteren")
 
 # De volgorde die het op hardware fout deed. Het instelscherm importeert deze
 # module ook, en kan draaien voor de service ooit gestart is. Verliet je dat

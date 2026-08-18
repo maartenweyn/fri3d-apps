@@ -12,12 +12,12 @@ vervanging: wie een veld weglaat, wist het.
 
 from mpos import Activity
 
-import mzsonos
-import mzstate as state
-import mzui as ui
+import spksonos
+import spkstate as state
+import spkui as ui
 
 
-class MuziekWekkers(Activity):
+class SpeakerWekkers(Activity):
 
     def __init__(self):
         super().__init__()
@@ -112,7 +112,7 @@ class MuziekWekkers(Activity):
         ui.knop(r, "+", lambda a=alarm: self._verschuif(a, 5),
                 breedte=38, hoogte=40)
 
-        omschrijving = "%s · %s" % (mzsonos.recurrence_text(alarm["herhaling"]),
+        omschrijving = "%s · %s" % (spksonos.recurrence_text(alarm["herhaling"]),
                                     alarm["bron"])
         wat = ui.label(r, ui.kort(omschrijving, 18), ui.COL_DIM)
         try:
