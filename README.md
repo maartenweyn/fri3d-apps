@@ -138,9 +138,12 @@ at dinner time.
 
 ### Badge — `tech.weyn.badgecontroller`
 
-The plumbing app. It has one small settings screen and otherwise stays out of
-the way, and everything else on the badge that talks to Home Assistant goes
-through it.
+The plumbing app, and the only one here that is mostly a service. It has three
+small settings screens and otherwise stays out of the way, and everything else on
+the badge that talks to Home Assistant goes through it.
+
+<img src="docs/images/badge-instellingen.png" alt="The Badge app's settings screen: this badge is Nina, Connection, Screen and lights, and a green status line reading connected, 100%, -80 dBm" width="360">
+<img src="docs/images/badge-klok.png" alt="The clock screen: the badge's name Nina on top, 22:38 in large seven-segment digits, di 18 aug on the left, 100% on the right, and a cloud with 21 degrees and 21/20" width="360">
 
 It exists because the connection, the name of the badge, the device id, the
 battery sensors and the screen timeout were all sitting inside the messages app,
@@ -190,11 +193,11 @@ and none of them are about messages. They describe the badge.
 - **One press of S in the dark, or one touch.** Either brings the clock back for
   ten seconds; a second press or touch returns you to the app underneath. Waking
   a dark badge at three in the morning should show you the time, not an app at
-  full brightness. So you can check the time at
-  night without lighting the room and without losing your place. Pressing S resets
-  the inactivity counter exactly like a finger does, so the service watches for
-  that counter *falling* rather than reading its value, and the button handler
-  consumes that fall before it can wake anything.
+  full brightness, and you get to keep your place. Every button resets the
+  inactivity counter exactly like a finger does, so the service watches for that
+  counter *falling* rather than reading its value, and consumes that fall before
+  it can wake anything. Without that the clock vanished the moment you touched the
+  joystick, which is the opposite of what you meant.
 - **The joystick dims the clock.** Up is brighter, down is darker, and only while
   the clock is on screen. Which of the two levels you are adjusting depends on
   where you are: at night the night value, by day the day value, so you dim it
@@ -294,6 +297,65 @@ and installs whatever is newer. Nothing to tap.
 
 Three buttons: check now, automatic on or off, and the index URL, typed on the
 badge itself through the OS input screen.
+
+## Services: the part that keeps running
+
+Three of these apps are not only a screen. A MicroPythonOS **service** is a class
+with `onCreate`, `onStart` and `onDestroy` that the OS starts from an intent
+filter in `MANIFEST.JSON`, and it keeps running whatever app is in the
+foreground:
+
+    "services": [
+      {
+        "entrypoint": "badge_service.py",
+        "classname": "BadgeService",
+        "intent_filters": [{"action": "boot_completed"}]
+      }
+    ]
+
+| App | Service | What it does while you are elsewhere |
+| --- | --- | --- |
+| Badge | `BadgeService` | Holds the MQTT connection, reports battery and signal, runs the screen and the clock |
+| Berichtjes | `MessagesService` | Waits for a message, blinks the LEDs, keeps it until someone acknowledges |
+| Updates | `UpdatesService` | Checks the app index every hour and installs what is newer |
+
+Six things about services that cost time to find out, and that every one of these
+apps now depends on.
+
+**They share one MicroPython VM and one `sys.modules`.** That is why Berichtjes
+can borrow the Badge app's MQTT connection instead of opening a second one. A
+plain `import badge_service` does not work, because `sys.path` is
+`['lib', '', '.frozen', '/lib']` and one app's folder is not on it. It is
+`sys.modules.get("badge_service")`, looked up **every tick and never cached**,
+because the order in which services start is not fixed and an app that misses the
+bridge once would never find it again.
+
+**A lazy import inside a function does not work either.** Same `sys.path`, and
+the working directory is `/`. The clock screen was imported the first time it was
+needed, and on the badge that was an `ImportError` no test would ever see. Import
+at module level, where the OS still has the app's folder within reach.
+
+**Two clients from one device to one broker is not a saving to make.** A broker
+evicts the older of two clients claiming the same id, and the two then take turns
+kicking each other off forever, which looks exactly like a flaky network. It cost
+months here once. Hence one connection, borrowed.
+
+**Anything you write on a settings screen must be applied, not only stored.** The
+activity and the service are separate objects; the service does not notice a
+preference changing. Every settings screen here calls back into the service when
+it closes.
+
+**Preferences hang off the app id.** Rename an app and every badge in the house
+forgets its name, its broker and its password, and someone gets to retype four
+fields on a touchscreen. `migrate_prefs()` in `badge_service.py` is the pattern:
+walk the older app ids, newest first, and take over the first one that has
+anything, once.
+
+**A service does not restart when you update it.** `AppManager.execute_script()`
+drops an activity's module from `sys.modules` afterwards, so a new version of a
+screen runs the next time you open it. A service stays resident until the badge
+reboots. The Updates app says so rather than pretending the new code is already
+running.
 
 ## Installing an app
 
@@ -453,6 +515,29 @@ can install, run and debug on real hardware instead of asking you to paste
 terminal output back to it. Run `./tools/mcp/setup.sh` and see
 [tools/mcp/README.md](tools/mcp/README.md).
 
+### Screenshots
+
+Every badge picture above came off the device itself. `tools/screenshot.py` runs
+on the badge and writes `/tmp/shot.b64`; `tools/shot_to_png.py` turns that into a
+PNG on your computer, doubled in size because 320 by 240 is small in a README.
+
+    badge_run_file tools/screenshot.py
+    python3 tools/shot_to_png.py shot.b64 docs/images/thing.png
+
+The raw pixels are 153600 bytes, and base64 makes 204800 characters of that,
+which is not something you pull through a serial REPL. These screens are flat
+areas with some text on them, so runs of equal pixels compress them to a
+fraction: the clock is nearly all black and comes out a hundred times smaller.
+It would have been one line with `deflate`, but the module on this firmware only
+decompresses.
+
+`all_layers=True` is not optional for these apps: the Badge app's clock lives in
+`lv.layer_top()` and is absent from the capture without it.
+
+Do not navigate by firing `lv.EVENT.CLICKED` from the REPL to reach the screen
+you want. Starting an activity from that context wedged the badge here and it
+took a power cycle. Tap the button yourself and take the shot after.
+
 ## This firmware is not quite the documented one
 
 The MicroPythonOS documentation describes a build that differs from the one
@@ -502,6 +587,8 @@ trusting a documented import path.
     badge.sh                    mpremote wrapper
     tools/                      scripts that run on the badge, plus the packager
     tools/publish.sh            builds every .mpk and writes your app_index.json
+    tools/screenshot.py         runs on the badge, compresses the screen
+    tools/shot_to_png.py        turns that into a PNG on your computer
     tools/mcp/                  MCP server exposing the badge over USB
     tests/                      lvgl and mpos stubs, offline tests
     docs/                       notes on MicroPythonOS and this badge,

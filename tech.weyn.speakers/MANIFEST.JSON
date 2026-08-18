@@ -4,7 +4,7 @@
   "short_description": "Start Spotify playlists on the Sonos speakers on your wifi",
   "long_description": "Pick a Sonos speaker on the local network, then tap one of your Spotify playlists to start it. Play, pause, skip and volume are there too, and the alarms of the chosen speaker can be switched on or off and moved in time. Everything runs over the speakers' own local protocol on port 1400, so no cloud service sits between the badge and the music.",
   "fullname": "tech.weyn.speakers",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "categories": [
     "Music"
   ],
