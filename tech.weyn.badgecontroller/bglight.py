@@ -71,8 +71,8 @@ def mode_text(mode):
     return MODE_TEXT.get(mode, MODE_TEXT["uit"])
 
 
-# De stap door een vaste reeks staat in de service, want de knoppen X en B op het
-# klokscherm lopen langs dezelfde trappen en die worden daar afgehandeld.
+# De stap door een vaste reeks staat in de service, want de joystick op het
+# klokscherm loopt langs dezelfde trappen en die wordt daar afgehandeld.
 volgende = service.stap
 
 

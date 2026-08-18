@@ -15,10 +15,18 @@ sier.
 De helderheid regelt de achtergrondverlichting, niet dit scherm. Hier is alles
 wit op zwart, en hoe donker dat wordt bepaalt `badge_service`.
 
-Zolang de klok staat pakt hij de focus van het toetsenbord af, zodat X en B de
-helderheid regelen in plaats van door te lopen naar de app eronder. Bij het
-weghalen gaat de focus terug naar waar hij stond. Aanrakingen gaan wel gewoon
-door: de overlay is niet aanklikbaar, en een tik hoort de app eronder te wekken.
+Dit scherm luistert nergens naar. Aanrakingen gaan door naar de app eronder (de
+overlay is niet aanklikbaar, en een tik hoort die app te wekken) en de joystick
+wordt door `badge_service` rechtstreeks van de I/O-expander gelezen.
+
+Dat laatste is een omweg met een reden. De eerste versie zette de overlay in de
+focusgroep zodat de toetsen hier aankwamen. Twee dingen gingen daar mis. De
+driver van het bord roept bij elke druk eerst zijn eigen navigatiehaak aan, dus
+X gaat sowieso een scherm terug en B verzet de focus voor er iets bij ons
+aankomt. En het onthouden van wie de focus had werd een val: kwam er intussen
+een bericht binnen, dan bouwde die app zijn scherm opnieuw op, wees onze
+herinnering naar iets dat niet meer bestond, en deed de d-pad daarna niets meer
+op de hele badge. Van de expander lezen heeft geen van beide problemen.
 """
 
 import lvgl as lv
@@ -41,9 +49,6 @@ def _const(*spellings, **kw):
 
 SCROLL_OFF = _const("SCROLLBAR_MODE.OFF", default=0)
 CLICKABLE = _const("obj.FLAG.CLICKABLE", "OBJ_FLAG_CLICKABLE")
-EVENT_KEY = _const("EVENT.KEY", "EVENT_KEY")
-KEY_UP = _const("KEY.UP", "KEY_UP", default=17)
-KEY_DOWN = _const("KEY.DOWN", "KEY_DOWN", default=18)
 
 COL_ACHTERGROND = 0x000000
 COL_TIJD = 0xFFFFFF
@@ -243,11 +248,7 @@ class ClockOverlay:
     Bouwt zichzelf pas bij de eerste keer tonen. Een badge die dit nooit gebruikt
     betaalt er dan ook geen geheugen voor."""
 
-    def __init__(self, op_toets=None):
-        # op_toets(delta) krijgt +1 voor X en -1 voor B. De klok weet niet wat
-        # er dan gebeurt; dat is aan wie hem toont.
-        self.op_toets = op_toets
-        self._vorige_focus = None
+    def __init__(self):
         self.root = None
         self.klok = None
         self.naam = None
@@ -326,57 +327,6 @@ class ClockOverlay:
         self.bereik.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
         self.bereik.set_text("")
 
-        self._pak_focus()
-
-    def _pak_focus(self):
-        """X en B naar hier halen zolang de klok staat.
-
-        De badge stuurt zijn d-pad naar het object dat focus heeft in de
-        standaardgroep. Zonder dit lopen X en B door naar de app eronder, die
-        onzichtbaar door een lijst zou scrollen terwijl jij denkt dat je de klok
-        dimt. Wie de focus had wordt onthouden en krijgt hem terug."""
-        if self.op_toets is None or EVENT_KEY is None:
-            return False
-        try:
-            groep = lv.group_get_default()
-            if not groep:
-                return False
-            self._vorige_focus = groep.get_focused()
-            groep.add_obj(self.root)
-            lv.group_focus_obj(self.root)
-            self.root.add_event_cb(self._toets, EVENT_KEY, None)
-            return True
-        except Exception as e:
-            print("klok: geen toetsen:", e)
-            return False
-
-    def _toets(self, event):
-        try:
-            toets = event.get_key()
-        except Exception:
-            return
-        if toets == KEY_UP:
-            delta = 1
-        elif toets == KEY_DOWN:
-            delta = -1
-        else:
-            return
-        try:
-            self.op_toets(delta)
-        except Exception as e:
-            print("klok: toets gooide:", e)
-
-    def _geef_focus_terug(self):
-        # Het verwijderen van de root haalt hem ook uit de groep; alleen de
-        # focus moet terug, anders staat de app eronder zonder.
-        vorige, self._vorige_focus = self._vorige_focus, None
-        if vorige is None:
-            return
-        try:
-            lv.group_focus_obj(vorige)
-        except Exception as e:
-            print("klok: focus niet terug te geven:", e)
-
     # --- tonen en weghalen -------------------------------------------------
 
     def zichtbaar(self):
@@ -395,7 +345,6 @@ class ClockOverlay:
             self.root.delete()
         except Exception:
             pass
-        self._geef_focus_terug()
         self.root = None
         self.klok = None
         self.naam = None

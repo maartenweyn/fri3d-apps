@@ -385,10 +385,21 @@ class _IOExpander:
     # including all night on a badge that is charging.
     debug_led = 50
 
+    # The twelve digital inputs, in the order MicroPythonOS's own driver uses
+    # (drivers/indev/fri3d_2026_expander.py):
+    #   0 usb  1 joy_right  2 joy_left  3 joy_down  4 joy_up
+    #   5 menu  6 B  7 A  8 Y  9 X  10 charger_standby  11 charger_charging
+    # True means pressed. This is the resting state of a badge on USB with a
+    # full battery, read off the device.
+    RUST = (True, False, False, False, False,
+            False, False, False, False, False, True, False)
+    digital = RUST
+
     @classmethod
     def reset(cls):
         cls.lcd_brightness = 100
         cls.debug_led = 50
+        cls.digital = cls.RUST
 
 
 io_expander = _IOExpander

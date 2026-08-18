@@ -47,9 +47,10 @@ SCREEN_OFF_S = 0
 IDLE_MODE = "uit"
 
 # Hoe fel die klok mag staan, overdag en 's nachts, 1..100. Nul zou uit zijn en
-# dat is geen klok. Terwijl de klok op het scherm staat maakt X hem feller en B
-# donkerder, en dat past de waarde aan die op dat moment geldt: dim je hem
-# vanuit bed, dan staat de nachtwaarde morgenavond meteen goed.
+# dat is geen klok. Terwijl de klok op het scherm staat regelt de joystick het
+# ook: omhoog is feller, omlaag donkerder. Dat past de waarde aan die op dat
+# moment geldt, dus dim je hem vanuit bed, dan staat de nachtwaarde morgenavond
+# meteen goed.
 CLOCK_DAY = 30
 CLOCK_NIGHT = 5
 

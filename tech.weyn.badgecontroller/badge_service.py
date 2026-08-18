@@ -878,10 +878,10 @@ def stap(waarden, huidig, delta):
 def klok_niveau_stap(delta):
     """De klok een trapje feller of donkerder, en onthouden.
 
-    X is omhoog en B is omlaag, en ze werken alleen terwijl de klok op het scherm
-    staat. Welke van de twee waarden je bijstelt hangt af van waar je bent: 's
-    nachts de nachtwaarde, overdag de dagwaarde. Zo dim je de klok vanuit bed en
-    staat hij morgenavond meteen goed."""
+    De joystick omhoog is feller en omlaag is donkerder, en ze werken alleen
+    terwijl de klok op het scherm staat. Welke van de twee waarden je bijstelt
+    hangt af van waar je bent: 's nachts de nachtwaarde, overdag de dagwaarde. Zo
+    dim je de klok vanuit bed en staat hij morgenavond meteen goed."""
     global CLOCK_DAY, CLOCK_NIGHT, _vorige_stil, _kijk_tot
     nacht = is_night(nu_epoch())
     if nacht:
@@ -892,10 +892,11 @@ def klok_niveau_stap(delta):
         sleutel, waarde = "clock_day", CLOCK_DAY
     _klok_licht(nacht)
 
-    # Een toets reset de inactiviteitsteller net zo goed als een vinger. Zonder
-    # dit zou de badge klaarwakker worden op de druk waarmee je hem juist wilde
-    # dimmen. Dezelfde truc als bij de S-knop: de daling hier verbruiken, zodat
-    # de volgende tik er geen aanraking meer in ziet.
+    # De joystick reset de inactiviteitsteller net zo goed als een vinger, want
+    # het OS leest hem ook. Zonder dit zou de badge klaarwakker worden van de
+    # beweging waarmee je hem juist wilde dimmen. Dezelfde truc als bij de
+    # S-knop: de daling hier verbruiken, zodat de volgende tik er geen aanraking
+    # meer in ziet.
     _vorige_stil = 0
     if screen_state == SCHERM_KIJK:
         # Wie aan de helderheid draait is aan het kijken.
@@ -945,7 +946,7 @@ def _klok_toon(nacht):
         if _bgclock is None:
             return False
         try:
-            _overlay = _bgclock.ClockOverlay(op_toets=klok_niveau_stap)
+            _overlay = _bgclock.ClockOverlay()
         except Exception as e:
             print("badge: klokscherm niet beschikbaar:", e)
             return False
@@ -1029,13 +1030,29 @@ def scherm_zet(nieuw, nacht=False):
     return True
 
 
-# --- de S-knop --------------------------------------------------------------
-# Gepolst en niet op een interrupt: de firmware leest deze pin zelf ook uit voor
-# het toetsenbord, en er een irq bij hangen is een risico voor iets dat elke app
-# gebruikt. Lezen is dat niet.
+# --- de knoppen -------------------------------------------------------------
+# Gepolst en niet op een interrupt: de firmware leest deze pinnen zelf ook uit
+# voor het toetsenbord, en er een irq bij hangen is een risico voor iets dat
+# elke app gebruikt. Lezen is dat niet.
+#
+# De S-knop is een gewone GPIO (btn_start, Pin 0, laag als hij ingedrukt is). De
+# joystick zit op de I/O-expander. De volgorde van `digital` staat in de driver
+# van MicroPythonOS (drivers/indev/fri3d_2026_expander.py) en is:
+#
+#   0 usb  1 joy_rechts  2 joy_links  3 joy_omlaag  4 joy_omhoog
+#   5 menu  6 B  7 A  8 Y  9 X  10 lader_klaar  11 lader_bezig
+#
+# Waarom de joystick en niet X en B, die daar naast liggen: die twee doen al iets
+# in het OS zelf. Die driver roept bij elke druk eerst zijn eigen navigatiehaak
+# aan, en X is ESC (een scherm terug) en B is NEXT (focus vooruit). Ze kapen zou
+# betekenen dat de app onder de klok intussen achteruit navigeert, en dat is niet
+# vanaf hier uit te zetten.
+JOY_OMHOOG = 4
+JOY_OMLAAG = 3
 
 _knop = None
 _knop_vorige = 1
+_joy_vorige = (False, False)
 
 
 def _knop_pin():
@@ -1088,6 +1105,28 @@ def knop_flank():
     return neer
 
 
+def joystick_flank():
+    """+1 op het moment dat de joystick omhoog gaat, -1 bij omlaag, anders 0.
+
+    Alleen de flank, niet het vasthouden: één beweging is één stap. Wordt elke
+    lus aangeroepen, ook als de klok niet staat, want anders is de eerste meting
+    een vergelijking met een stand van minuten geleden."""
+    global _joy_vorige
+    try:
+        digitaal = _expander().digital
+        omhoog = bool(digitaal[JOY_OMHOOG])
+        omlaag = bool(digitaal[JOY_OMLAAG])
+    except Exception:
+        return 0
+    was_omhoog, was_omlaag = _joy_vorige
+    _joy_vorige = (omhoog, omlaag)
+    if omhoog and not was_omhoog:
+        return 1
+    if omlaag and not was_omlaag:
+        return -1
+    return 0
+
+
 def idle_ms():
     try:
         return int(_display().get_inactive_time())
@@ -1118,6 +1157,7 @@ def screen_tick():
     krijgt: die roept wake() aan."""
     global _vorige_stil, _kijk_tot, _kijk_negeer
     gedrukt = knop_flank()
+    richting = joystick_flank()
     stil = idle_ms()
     activiteit = stil < _vorige_stil
     _vorige_stil = stil
@@ -1143,6 +1183,12 @@ def screen_tick():
                 _display().trigger_activity()
             except Exception:
                 pass
+        return
+
+    if richting and screen_state in (SCHERM_KLOK, SCHERM_KIJK):
+        # Joystick omhoog is feller, omlaag is donkerder. Alleen terwijl de klok
+        # staat: anders is de joystick van de app die eronder draait.
+        klok_niveau_stap(richting)
         return
 
     if screen_state == SCHERM_KIJK:

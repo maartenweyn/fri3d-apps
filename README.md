@@ -191,6 +191,21 @@ and none of them are about messages. They describe the badge.
   the inactivity counter exactly like a finger does, so the service watches for
   that counter *falling* rather than reading its value, and the button handler
   consumes that fall before it can wake anything.
+- **The joystick dims the clock.** Up is brighter, down is darker, and only while
+  the clock is on screen. Which of the two levels you are adjusting depends on
+  where you are: at night the night value, by day the day value, so you dim it
+  from bed and it is right again the next evening. Not X and B, which would be the
+  obvious pair: the board's own driver runs its navigation hook on every press, so
+  X is ESC (back one screen) and B is NEXT (focus forward). Hijacking them would
+  navigate the app under the clock backwards while you thought you were dimming,
+  and that cannot be switched off from here.
+- **The buttons are read from the expander, not through LVGL.** The first version
+  put the overlay in the focus group so the keys arrived there. That had two
+  faults. The board driver fires first, so X and B never reach us intact. And
+  remembering which object had focus became a trap: a message arriving rebuilt the
+  messages app's screen, our memory pointed at something that no longer existed,
+  and after that the d-pad did nothing anywhere on the badge. Reading
+  `mpos.io_expander.digital` has neither problem.
 - **Weather comes from Home Assistant over MQTT.** One retained message on
   `home/badges/weer`, a topic that does not carry the badge's name because the
   weather does not either. Every badge showing a clock reads the same message. The

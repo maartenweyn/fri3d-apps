@@ -856,6 +856,60 @@ equal("een druk op S verandert daar niets aan", service.screen_state,
       service.SCHERM_NORMAAL)
 check("en er is geen klok gebouwd", overlay.gebouwd == 0)
 
+# De joystick regelt de helderheid, en X en B met opzet niet. Die twee doen al
+# iets in het OS zelf: de driver van het bord roept bij elke druk eerst zijn
+# eigen navigatiehaak aan, X is ESC (een scherm terug) en B is NEXT. Ze kapen zou
+# betekenen dat de app onder de klok achteruit navigeert terwijl je denkt dat je
+# dimt, en dat is niet vanaf hier uit te zetten.
+svc, overlay = scherm_opzet(NACHT)
+stil(31_000)
+equal("de klok staat", service.screen_state, service.SCHERM_KLOK)
+equal("op de nachtwaarde", service.CLOCK_NIGHT, 5)
+
+JOY = mpos.io_expander
+
+
+def beweeg(index):
+    """De joystick even in een richting en weer los."""
+    d = list(JOY.digital)
+    d[index] = True
+    JOY.digital = tuple(d)
+    service.screen_tick()
+    d[index] = False
+    JOY.digital = tuple(d)
+    service.screen_tick()
+
+
+beweeg(service.JOY_OMLAAG)
+equal("omlaag dimt de klok", service.CLOCK_NIGHT, 3)
+equal("en het scherm volgt meteen", mpos.io_expander.lcd_brightness, 3)
+equal("de klok blijft staan", service.screen_state, service.SCHERM_KLOK)
+beweeg(service.JOY_OMHOOG)
+beweeg(service.JOY_OMHOOG)
+equal("omhoog maakt hem weer feller", service.CLOCK_NIGHT, 10)
+
+# Vasthouden is één stap. De expander blijft True melden zolang de joystick
+# staat, en dat mag niet als tien stappen tellen.
+d = list(JOY.digital)
+d[service.JOY_OMHOOG] = True
+JOY.digital = tuple(d)
+service.screen_tick()
+service.screen_tick()
+service.screen_tick()
+equal("vasthouden is één stap", service.CLOCK_NIGHT, 20)
+d[service.JOY_OMHOOG] = False
+JOY.digital = tuple(d)
+service.screen_tick()
+
+# Met de app op het scherm is de joystick van die app.
+svc, overlay = scherm_opzet(NACHT)
+stil(1_000)
+equal("de app staat op het scherm", service.screen_state,
+      service.SCHERM_NORMAAL)
+voor = service.CLOCK_NIGHT
+beweeg(service.JOY_OMLAAG)
+equal("de joystick blijft dan van de app", service.CLOCK_NIGHT, voor)
+
 # Een badge zonder S-knop mag hier niet op vallen.
 service._knop = False
 equal("geen knop is geen fout", service.knop_flank(), False)
@@ -1086,16 +1140,6 @@ check("allebei voor de klasse, dus voor een activity iets kan schrijven",
 import lvgl as lv                                     # noqa: E402
 import bgclock                                        # noqa: E402
 
-
-class _Toets:
-    """Een LVGL-toetsgebeurtenis, zoals de d-pad hem aanlevert."""
-
-    def __init__(self, toets):
-        self.toets = toets
-
-    def get_key(self):
-        return self.toets
-
 equal("regen is regen", bgclock.icoon_soort("pouring"), "regen")
 equal("onweer telt als regen", bgclock.icoon_soort("lightning-rainy"), "regen")
 equal("sneeuw ook", bgclock.icoon_soort("snowy"), "regen")
@@ -1146,30 +1190,6 @@ check("de naam hoort erbij en verandert het scherm",
       klok.werk_bij("07:19", "ma 17 aug", None, None, "Badkamer"))
 check("en dezelfde naam tekent niet opnieuw",
       not klok.werk_bij("07:19", "ma 17 aug", None, None, "Badkamer"))
-
-# X en B regelen de helderheid zolang de klok staat. Zonder de focus af te pakken
-# lopen die toetsen door naar de app eronder, die dan onzichtbaar door een lijst
-# scrolt terwijl jij denkt dat je de klok dimt.
-stappen = []
-toetsklok = bgclock.ClockOverlay(op_toets=lambda d: stappen.append(d))
-toetsklok.toon()
-check("de klok zit in de focusgroep",
-      toetsklok.root in lv.group_get_default().objects)
-check("en heeft de focus",
-      lv.group_get_default().get_focused() is toetsklok.root)
-toetsklok._toets(_Toets(bgclock.KEY_UP))
-toetsklok._toets(_Toets(bgclock.KEY_DOWN))
-toetsklok._toets(_Toets(bgclock.KEY_UP))
-equal("X is feller en B is donkerder", stappen, [1, -1, 1])
-toetsklok._toets(_Toets(27))
-equal("een andere toets doet niets", stappen, [1, -1, 1])
-
-# De focus hoort terug te gaan naar waar hij stond, anders staat de app eronder
-# zonder toetsenbord zodra de klok weg is.
-toetsklok.weg()
-check("de klok is uit de focusgroep",
-      toetsklok.root is None and
-      lv.group_get_default().get_focused() is not toetsklok)
 
 klok.weg()
 check("weghalen laat niets staan", not klok.zichtbaar())

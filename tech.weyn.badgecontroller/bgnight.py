@@ -16,8 +16,9 @@ De nachtwaarden gaan lager dan de dagwaarden en beginnen bij 1. Nul zou uit zijn
 en dat is geen klok. Op 1 procent is dit scherm in een donkere kamer nog prima
 te lezen en geeft het geen licht dat je wakker houdt.
 
-Hetzelfde is ook zonder dit scherm te doen: terwijl de klok staat maakt X hem
-feller en B donkerder, en dat past de waarde aan die op dat moment geldt.
+Hetzelfde is ook zonder dit scherm te doen: terwijl de klok staat maakt de
+joystick omhoog hem feller en omlaag donkerder, en dat past de waarde aan die op
+dat moment geldt.
 """
 
 import lvgl as lv
