@@ -58,8 +58,9 @@ CLOCK_NIGHT = 5
 # 23 tot 7 is 23, 0, 1 tot en met 6. Gelijke waarden betekenen: geen nacht.
 #
 # Binnen het venster gaat de klok naar CLOCK_NIGHT, en na nog eens SCREEN_OFF_S
-# gaat hij alsnog helemaal uit. Een druk op de S-knop laat hem dan tien seconden
-# zien; nog een druk brengt je terug naar de app die eronder stond.
+# gaat hij alsnog helemaal uit. Een druk op de S-knop of een aanraking van het
+# scherm laat hem dan tien seconden zien; nog een druk of tik brengt je terug
+# naar de app die eronder stond.
 NIGHT_FROM = 23
 NIGHT_TO = 7
 

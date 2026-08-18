@@ -185,8 +185,10 @@ and none of them are about messages. They describe the badge.
   Inside it the clock drops to the night level, and after the same waiting period
   again it goes out altogether. That second step has no setting of its own on
   purpose: it would need a fifth row and a fifth row does not fit.
-- **One press of S in the dark.** It brings the clock back for ten seconds; a
-  second press returns you to the app underneath. So you can check the time at
+- **One press of S in the dark, or one touch.** Either brings the clock back for
+  ten seconds; a second press or touch returns you to the app underneath. Waking
+  a dark badge at three in the morning should show you the time, not an app at
+  full brightness. So you can check the time at
   night without lighting the room and without losing your place. Pressing S resets
   the inactivity counter exactly like a finger does, so the service watches for
   that counter *falling* rather than reading its value, and the button handler

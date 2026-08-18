@@ -11,7 +11,8 @@ niets met een enkele app te maken hebben:
   2. **Wie deze badge is.** De naam, het toestel-id uit het MAC, de topics, en
      wat Home Assistant erover te horen krijgt: batterij, spanning, signaal.
   3. **Het scherm.** Uit of een gedimde klok na een tijd niets doen, wakker bij
-     aanraking, en 's nachts donkerder dan overdag.
+     aanraking, en 's nachts donkerder dan overdag. Uit het donker komt eerst
+     de klok en pas bij de tweede aanraking de app.
 
 Andere apps praten hier tegen. Ze mogen niet `import badge_service` doen: de
 map van deze app staat niet op `sys.path` van een andere app. Alle apps draaien
@@ -1233,7 +1234,18 @@ def screen_tick():
         return
 
     if stil < SCREEN_OFF_S * 1000:
-        if screen_state != SCHERM_NORMAAL and activiteit:
+        if screen_state == SCHERM_UIT and activiteit and IDLE_MODE == "klok":
+            # Uit het donker komt eerst de klok, net als bij de S-knop. Wie om
+            # drie uur zijn badge aanraakt wil weten hoe laat het is, en niet
+            # een app op vol licht. Nog een aanraking brengt je naar die app.
+            #
+            # Geen respijt zoals bij de knop: de aanraking die dit oproept is
+            # zelf al de daling die we hier zien, dus een tweede tik werkt
+            # meteen.
+            _kijk_tot = _seconden() + KIJK_S
+            _kijk_negeer = _seconden()
+            scherm_zet(SCHERM_KIJK, nacht)
+        elif screen_state != SCHERM_NORMAAL and activiteit:
             scherm_zet(SCHERM_NORMAAL)
         return
 

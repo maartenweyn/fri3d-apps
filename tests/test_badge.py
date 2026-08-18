@@ -938,6 +938,48 @@ voor = service.CLOCK_NIGHT
 beweeg(service.JOY_OMLAAG)
 equal("de joystick blijft dan van de app", service.CLOCK_NIGHT, voor)
 
+# Uit het donker komt eerst de klok, ook bij een aanraking. Wie om drie uur zijn
+# badge aanraakt wil weten hoe laat het is en niet een app op vol licht. Nog een
+# aanraking brengt je naar die app.
+svc, overlay = scherm_opzet(NACHT)
+stil(10 * 60 * 1000)
+equal("het scherm is uit", service.screen_state, service.SCHERM_UIT)
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("een aanraking geeft eerst de klok", service.screen_state,
+      service.SCHERM_KIJK)
+equal("op de nachthelderheid", mpos.io_expander.lcd_brightness, 5)
+
+# Geen respijt zoals bij de knop: de aanraking die dit opriep is zelf al de
+# daling die we zagen, dus de tweede tik werkt meteen.
+mpos.ui.main_display.inactive_ms = 200
+service.screen_tick()
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("en de tweede aanraking brengt de app terug", service.screen_state,
+      service.SCHERM_NORMAAL)
+
+# Doe je verder niets, dan gaat hij vanzelf weer donker.
+svc, overlay = scherm_opzet(NACHT)
+stil(10 * 60 * 1000)
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("weer de klok", service.screen_state, service.SCHERM_KIJK)
+Clock.advance(service.KIJK_S + 1)
+mpos.ui.main_display.inactive_ms = 11_000
+service.screen_tick()
+equal("en daarna vanzelf terug donker", service.screen_state,
+      service.SCHERM_UIT)
+
+# Met de klok uitgeschakeld valt er niets te tonen, dus dan meteen de app.
+svc, overlay = scherm_opzet(DAG, mode="uit")
+stil(31_000)
+equal("scherm uit", service.screen_state, service.SCHERM_UIT)
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("zonder klok wekt een aanraking gewoon de app", service.screen_state,
+      service.SCHERM_NORMAAL)
+
 # Een badge zonder S-knop mag hier niet op vallen.
 service._knop = False
 equal("geen knop is geen fout", service.knop_flank(), False)
@@ -973,6 +1015,13 @@ stil(31_000)
 equal("de klok gebruikt zijn eigen waarde", mpos.io_expander.lcd_brightness, 5)
 stil(2 * 60 * 1000)
 equal("en daarna uit", mpos.io_expander.lcd_brightness, 0)
+# Twee aanrakingen: de eerste geeft de klok, de tweede de app.
+mpos.ui.main_display.inactive_ms = 0
+service.screen_tick()
+equal("de klok gebruikt weer zijn eigen waarde",
+      mpos.io_expander.lcd_brightness, 5)
+mpos.ui.main_display.inactive_ms = 200
+service.screen_tick()
 mpos.ui.main_display.inactive_ms = 0
 service.screen_tick()
 equal("terug op de helderheid van de app, niet die van de klok",
@@ -980,6 +1029,7 @@ equal("terug op de helderheid van de app, niet die van de klok",
 
 # wake() is wat een app aanroept die iets te melden heeft terwijl het scherm net
 # uit ging. Een bericht op een donkere badge is geen bericht.
+stil(10 * 60 * 1000)
 stil(10 * 60 * 1000)
 equal("scherm uit", service.screen_off, True)
 service.wake()
