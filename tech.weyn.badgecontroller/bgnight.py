@@ -7,10 +7,9 @@ tot 7 is 23, 0, 1 tot en met 6. Van gelijk aan tot betekent dat er geen nacht is
 en dat de klok de hele dag op dezelfde helderheid blijft staan.
 
 Binnen het venster gebeuren er twee dingen. De klok gaat naar de nachtwaarde, en
-na nog eens dezelfde wachttijd gaat hij helemaal uit. Die tweede stap staat hier
-niet als eigen instelling, want dan zou er een vijfde rij bij moeten, en de
-wachttijd die je voor de eerste stap koos is precies de goede maat voor de
-tweede.
+tien minuten later gaat hij helemaal uit. Die tien minuten staan vast in
+`KLOK_UIT_S` en niet op een scherm: de klok mag snel komen en daarna nog een
+hele tijd blijven staan, en voor die tweede maat is hier geen rij meer vrij.
 
 De nachtwaarden gaan lager dan de dagwaarden en beginnen bij 1. Nul zou uit zijn
 en dat is geen klok. Op 1 procent is dit scherm in een donkere kamer nog prima

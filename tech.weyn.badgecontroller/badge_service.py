@@ -103,6 +103,17 @@ CLOCK_DAY = 30            # helderheid van de klok overdag
 CLOCK_NIGHT = 5           # en 's nachts
 NIGHT_FROM = 23           # het nachtvenster, in hele uren lokale tijd
 NIGHT_TO = 7              # van == tot betekent: geen nacht
+
+# Hoe lang de gedimde klok 's nachts blijft staan voor het scherm alsnog helemaal
+# uit gaat, gerekend vanaf het moment dat hij verscheen.
+#
+# Met opzet geen instelling op de badge zelf. De klok mag snel komen en het
+# scherm mag daarna nog een hele tijd aan blijven, en dat zijn twee heel
+# verschillende maten: één rij op het instelscherm voor allebei zou een slechte
+# keuze afdwingen. Een vijfde rij past er niet bij, want 240 pixels en de rijen
+# scrollen niet. Tien minuten is ruim voor wie 's avonds nog eens opkijkt en kort
+# genoeg om niet de hele nacht te branden. Wie het anders wil zet het hier.
+KLOK_UIT_S = 600
 WEER_TOPIC = "home/badges/weer"
 CONFIG_OK = False
 
@@ -123,6 +134,7 @@ try:
     NIGHT_FROM = getattr(_cfg, "NIGHT_FROM", NIGHT_FROM)
     NIGHT_TO = getattr(_cfg, "NIGHT_TO", NIGHT_TO)
     WEER_TOPIC = getattr(_cfg, "WEER_TOPIC", WEER_TOPIC)
+    KLOK_UIT_S = getattr(_cfg, "KLOK_UIT_S", KLOK_UIT_S)
     CONFIG_OK = True
 except ImportError:
     print("badge: geen badge_config.py, standaardwaarden")
@@ -149,6 +161,7 @@ LUS_TICK = 0.1
 # Hoe lang de klok blijft staan na een druk op S in het donker. Kort genoeg dat
 # een blik op het uur geen kamerverlichting wordt.
 KIJK_S = 10
+
 
 # Hoe vaak de badge zijn batterij meldt. Een cel loopt over uren leeg; elke paar
 # seconden meten geeft alleen radioverkeer en ruis op een grafiek.
@@ -1252,8 +1265,10 @@ def screen_tick():
     if IDLE_MODE != "klok":
         scherm_zet(SCHERM_UIT)
         return
-    if nacht and stil >= 2 * SCREEN_OFF_S * 1000:
-        # 's Nachts eerst een tijd de gedimde klok, en daarna alsnog donker.
+    if nacht and stil >= (SCREEN_OFF_S + KLOK_UIT_S) * 1000:
+        # 's Nachts eerst de gedimde klok, en KLOK_UIT_S later alsnog donker.
+        # Twee verschillende maten met opzet: de klok mag snel komen en het
+        # scherm mag daarna nog een tijd aan blijven.
         scherm_zet(SCHERM_UIT)
         return
     scherm_zet(SCHERM_KLOK, nacht)

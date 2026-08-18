@@ -182,9 +182,11 @@ and none of them are about messages. They describe the badge.
 - **Night is darker, and then dark.** Behind *Nacht en helderheid* you set how
   bright the clock is by day and by night, and between which two hours it is
   night. The window wraps around midnight, so 23 to 7 means 23, 0, 1 through 6.
-  Inside it the clock drops to the night level, and after the same waiting period
-  again it goes out altogether. That second step has no setting of its own on
-  purpose: it would need a fifth row and a fifth row does not fit.
+  Inside it the clock drops to the night level, and ten minutes later it goes out
+  altogether. Those ten minutes are `KLOK_UIT_S` in the config file and not a row
+  on a settings screen: the clock may appear quickly and the screen may then stay
+  on for a good while, which are two very different durations, and one setting for
+  both would force a bad choice. A fifth row does not fit.
 - **One press of S in the dark, or one touch.** Either brings the clock back for
   ten seconds; a second press or touch returns you to the app underneath. Waking
   a dark badge at three in the morning should show you the time, not an app at

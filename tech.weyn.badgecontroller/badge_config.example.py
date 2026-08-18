@@ -57,12 +57,20 @@ CLOCK_NIGHT = 5
 # Het nachtvenster in hele uren lokale tijd. Het loopt over middernacht heen, dus
 # 23 tot 7 is 23, 0, 1 tot en met 6. Gelijke waarden betekenen: geen nacht.
 #
-# Binnen het venster gaat de klok naar CLOCK_NIGHT, en na nog eens SCREEN_OFF_S
-# gaat hij alsnog helemaal uit. Een druk op de S-knop of een aanraking van het
-# scherm laat hem dan tien seconden zien; nog een druk of tik brengt je terug
-# naar de app die eronder stond.
+# Binnen het venster gaat de klok naar CLOCK_NIGHT, en KLOK_UIT_S later gaat hij
+# alsnog helemaal uit. Een druk op de S-knop of een aanraking van het scherm laat
+# hem dan tien seconden zien; nog een druk of tik brengt je terug naar de app die
+# eronder stond.
 NIGHT_FROM = 23
 NIGHT_TO = 7
+
+# Hoe lang de gedimde klok 's nachts blijft staan voor het scherm helemaal uit
+# gaat, gerekend vanaf het moment dat hij verscheen. Niet op de badge in te
+# stellen: de klok mag snel komen en het scherm mag daarna nog een hele tijd aan
+# blijven, en dat zijn twee heel verschillende maten. Eén instelling voor allebei
+# zou een slechte keuze afdwingen, en er is geen rij meer vrij op het
+# instelscherm.
+KLOK_UIT_S = 600
 
 # Waar het weerbericht vandaan komt. Eén retained bericht van Home Assistant op
 # een topic dat los staat van de naam van de badge, want het weer staat daar ook

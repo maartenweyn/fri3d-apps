@@ -10,8 +10,12 @@ Wat er te kiezen valt:
   * **Na inactiviteit** is wat er gebeurt als je de badge laat liggen: uit, of
     een gedimde klok. De klok is een overlay boven de app die op dat moment
     draait, dus wat je aan het doen was blijft staan.
-  * **Wachten** is hoe lang dat duurt. Dezelfde periode telt 's nachts een
-    tweede keer: eerst de gedimde klok, daarna alsnog donker.
+  * **Wachten** is hoe lang dat duurt: hoe snel de klok komt. Hoe lang die
+    daarna 's nachts blijft staan voor het scherm alsnog helemaal uit gaat is
+    een andere maat en staat vast op tien minuten (`KLOK_UIT_S`). De klok mag
+    snel komen en het scherm mag daarna nog een hele tijd aan blijven; één
+    instelling voor allebei zou een slechte keuze afdwingen, en een vijfde rij
+    past hier niet.
   * **Debug-LED** is het kleine lampje op de I2C-expander. Het staat af fabriek
     op 50 en brandt dus altijd. De expander is een eigen microcontroller die
     zijn instelling zelf bijhoudt, dus nul zetten overleeft een herstart van de

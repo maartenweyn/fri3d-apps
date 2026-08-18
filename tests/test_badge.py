@@ -138,6 +138,7 @@ def fresh_service(**prefs):
     service.CLOCK_NIGHT = 5
     service.NIGHT_FROM = 23
     service.NIGHT_TO = 7
+    service.KLOK_UIT_S = 600
     service.MQTT_BROKER = _config.MQTT_BROKER
     service.MQTT_PORT = _config.MQTT_PORT
     service.MQTT_USER = _config.MQTT_USER
@@ -713,6 +714,9 @@ def scherm_opzet(uur_epoch, mode="klok", timeout=30):
     service.IDLE_MODE = mode
     service.NIGHT_FROM = 23
     service.NIGHT_TO = 7
+    # Kort, zodat de trap in een test te doorlopen is. Op de badge staat hier
+    # tien minuten.
+    service.KLOK_UIT_S = 60
     service.CLOCK_DAY = 30
     service.CLOCK_NIGHT = 5
     service.nu_epoch = lambda: uur_epoch
@@ -757,11 +761,15 @@ stil(31_000)
 equal("'s nachts komt dezelfde klok", service.screen_state,
       service.SCHERM_KLOK)
 equal("maar veel donkerder", mpos.io_expander.lcd_brightness, 5)
-stil(59_000)
-equal("na één keer wachten staat hij er nog", service.screen_state,
+
+# De klok mag snel komen en daarna nog een hele tijd blijven staan. Dat zijn twee
+# verschillende maten: de wachttijd bepaalt wanneer hij komt, KLOK_UIT_S hoe lang
+# hij daarna nog staat.
+stil(89_000)          # 30 s wachten plus 60 s klok is 90
+equal("de klok blijft staan zolang KLOK_UIT_S loopt", service.screen_state,
       service.SCHERM_KLOK)
-stil(61_000)
-equal("na twee keer gaat hij uit", service.screen_state, service.SCHERM_UIT)
+stil(91_000)
+equal("en daarna gaat hij uit", service.screen_state, service.SCHERM_UIT)
 equal("en dat is helderheid nul", mpos.io_expander.lcd_brightness, 0)
 equal("screen_off zegt hetzelfde", service.screen_off, True)
 check("de klok is opgeruimd", not overlay.op)
