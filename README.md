@@ -86,10 +86,15 @@ minutes, most of it pasting YAML.
 
 #### How it behaves
 
-- **A background service, not a screen.** The MQTT connection lives in a
-  `boot_completed` Service, so a message arrives while the child is playing a
-  game. The service posts a notification, blinks the LEDs and pulls the screen
-  to the front.
+- **A background service, not a screen.** A `boot_completed` Service listens
+  whatever is on screen, so a message arrives while the child is playing a game.
+  It posts a notification, blinks the LEDs, wakes the screen if it had gone dark,
+  and pulls the app to the front.
+- **It borrows the connection.** The MQTT link, the broker settings and the name
+  of the badge live in the [Badge app](#badge--beweynbadge), because they
+  describe the badge and not this app. One badge, one connection. If that app is
+  not running the screen says `geen Badge-app` rather than `geen verbinding`:
+  those call for different repairs.
 - **The same message twice is two messages.** Comparing incoming text with the
   last one is the obvious way to avoid duplicates, and it swallows exactly the
   message you care about: the second "dinner in ten minutes" of the evening.
@@ -107,15 +112,9 @@ minutes, most of it pasting YAML.
   sent when the link returns, and then the screen catches up by itself.
 - **Backs off out of range.** A failed connection retries after 2 seconds, then
   4, up to a minute, rather than hammering the radio in a bedroom with no WiFi.
-- **Configured on the badge.** Name, broker, port, user and password are typed
-  behind the gear button and stored in SharedPreferences, so every badge runs an
-  identical copy of the app and no password has to live in a file. The password
-  is never displayed.
-- **Reports its own battery.** Charge, voltage and signal strength every five
-  minutes, and the badge announces those sensors to Home Assistant itself, so
-  there is no YAML to write for them. A badge that walks out of range or runs
-  flat is marked unavailable by the broker rather than showing its last reading
-  forever.
+- **Configured on the badge.** How long the LEDs nag, and whether they nag at
+  all, sit behind the gear button. The name of this badge and the broker are one
+  button further along, in the Badge app.
 
 #### On the dashboard
 
@@ -137,16 +136,80 @@ containing `now()` is re-rendered every minute, so the fall back to grey happens
 by itself, with no timer to survive a restart and nothing arriving on your phone
 at dinner time.
 
-#### The badge as a device
+### Badge — `be.weyn.badge`
 
-The badge publishes MQTT discovery for its own health, so Home Assistant creates
-the sensors without you writing anything:
+The plumbing app. It has one small settings screen and otherwise stays out of
+the way, and everything else on the badge that talks to Home Assistant goes
+through it.
+
+It exists because the connection, the name of the badge, the device id, the
+battery sensors and the screen timeout were all sitting inside the messages app,
+and none of them are about messages. They describe the badge.
+
+- **One MQTT connection, borrowed by the others.** Two clients from one device to
+  one broker is not a saving to make: a broker evicts the older of two clients
+  claiming the same id, and the two then take turns kicking each other off
+  forever while it looks exactly like a flaky network. Other apps look this
+  service up in `sys.modules` and ask it to subscribe or publish.
+- **Subscriptions are by suffix, not by topic.** An app asks for `"msg"` and gets
+  `home/badges/<name>/msg`. Rename the badge and it is resubscribed on the new
+  topic by itself, which is not true of anything that asked for the full topic.
+- **The badge as a device in Home Assistant.** It publishes MQTT discovery for
+  its own health, so the sensors appear without you writing anything:
 
 <img src="docs/images/ha-device.png" alt="The badge's device page in Home Assistant, showing Fri3d 2026 badge with battery, battery voltage and WiFi signal" width="600">
 
-The discovery is keyed on the badge's MAC rather than its name, so renaming a
-badge updates the entities that already exist instead of stranding them and
-starting a second set from zero.
+  Charge, voltage and signal strength every five minutes. The discovery is keyed
+  on the badge's MAC rather than its name, so renaming a badge updates the
+  entities that already exist instead of stranding them and starting a second set
+  from zero. A badge that walks out of range or runs flat is marked unavailable
+  by the broker through a real last will, rather than showing yesterday's reading
+  forever.
+- **The screen turns itself off.** MicroPythonOS has no screen timeout and no
+  brightness setting, so this app polls the inactivity counter and drives the
+  brightness over the I2C expander. Anything from fifteen seconds to a quarter of
+  an hour, or never. It remembers the brightness from before it went dark, so a
+  badge set to 40 does not wake up at 100. An app with something to say calls
+  `wake()`, because a message on a dark badge is not a message.
+- **Set up on the badge.** Name, broker, port, user and password are typed here
+  and stored in SharedPreferences, so every badge runs an identical copy of the
+  app and no password has to live in a file. The password is never displayed.
+  Editing it starts from an empty field, and leaving it empty keeps what is
+  stored.
+- **It brings your old settings with it.** A badge that was set up when the
+  messages app still owned the connection keeps its name, broker and login. You
+  do not retype four fields on a touchscreen.
+
+### Muziek — `be.weyn.muziek`
+
+Start one of your Spotify playlists on a Sonos speaker, from the badge.
+
+Pick a speaker on the wifi, tap a playlist, and it plays. Transport and volume
+are there, and so are the alarms of the chosen speaker: switch them on or off and
+move them in five minute steps.
+
+- **The two halves talk to two different systems, and that is not a choice.**
+  Spotify's Web API cannot drive Sonos: the speakers are a restricted device
+  there and do not even appear in `GET /v1/me/player/devices`. So the badge asks
+  Spotify what there is to choose from, and hands the chosen
+  `spotify:playlist:` URI to the speaker's own local protocol on port 1400. No
+  cloud service sits between the badge and the music.
+- **It remembers the speaker you used**, looked back up by uid rather than by
+  address, because DHCP moves a speaker and its uid never changes.
+- **A speaker that is grouped says so**, and the command goes to the group's
+  coordinator, because a follower refuses to play.
+- **Two sources for the list.** Your Spotify playlists, and the favourites stored
+  in the Sonos system itself. They break independently: one needs a refresh
+  token, the other needs nothing. A button switches.
+- **Nothing blocks the screen.** Every network call is a coroutine over
+  `asyncio.open_connection`, TLS included, because LVGL runs on the same thread
+  and a blocking socket freezes the display.
+
+Spotify needs a one-time login on a computer: `tools/spotify_auth.py` does the
+PKCE dance and prints a refresh token for `muziek_config.py`. Without it the app
+still works, on the Sonos favourites. `tools/sonos_probe.py` is the same protocol
+layer as a standalone script, for looking at what a speaker answers without a
+badge in the loop.
 
 ## Installing an app
 
@@ -197,22 +260,38 @@ that does not exist on this build, and that is what surfaces them.
 
 ### Tests without a badge
 
-The timer logic runs on desktop Python against stubs for `lvgl` and `mpos`:
+Everything except the pixels runs on desktop Python against stubs for `lvgl`
+and `mpos`:
 
     python3 tests/test_pomodoro.py      # 66 checks
-    python3 tests/test_dinerbadge.py    # 345 checks
+    python3 tests/test_dinerbadge.py    # 167 checks
+    python3 tests/test_badge.py         # 1515 checks
+    python3 tests/test_muziek.py        # 403 checks
 
 Pomodoro: the phase cycle, pause and resume timing, the day rollover, clamping
 in the settings screen, LED cleanup on exit, that the LED hourglass only ever
 empties, that a paused timer shows amber, and that chimes are routed to the
 buzzer rather than the headset.
 
-Berichtjes: a fake broker that drops the link the way a real one does, so the
-backoff, the keepalive, a refused login and a held acknowledgement are all
-exercised without hardware. A fake ADC that is missing, broken, or fine, since
-each of those has to leave a message arriving. Plus the settings screens, down to the size of the
-tap targets, because sending a CLICKED event proves the callback works and says
-nothing about whether a finger can reach it.
+Berichtjes: a fake bridge in `sys.modules`, which is also exactly how the app
+finds the real one, so the sequence numbering, a held acknowledgement, the LED
+timeout and the two different ways of being disconnected are all exercised
+without hardware. Plus the settings screens, down to the size of the tap targets,
+because sending a CLICKED event proves the callback works and says nothing about
+whether a finger can reach it.
+
+Badge: a fake broker that drops the link the way a real one does, so the backoff,
+the keepalive, a refused login and a rename that has to clear its own retained
+topics are all covered. A fake ADC that is missing, broken, or fine, since each
+of those has to leave a message arriving. The screen timeout, including that it
+restores the brightness it found. And the order in which the preferences are
+migrated, checked by reading the source, because a test that simply calls the
+function would not catch the activity that ran first.
+
+Muziek: real Sonos answers, copied verbatim off a live system, including the
+double XML escaping that is the trap in updating an alarm. The SOAP calls are
+asserted in order, because setting the play mode before the queue is the source
+is a UPnP 712 and nothing else tells you.
 
 The stubs deliberately mirror the quirks of the real firmware, so the fallback
 paths are what gets exercised. They also refuse what the firmware refuses: the
@@ -243,6 +322,19 @@ documented import or symbol simply is not there. The ones that cost us time:
    so the call passes every desktop check and raises `AttributeError` on the
    badge.
 5. `time.localtime()` returns UTC even with the timezone set in Settings.
+6. A module-level `NAME = const(...)` is intercepted by the compiler, which then
+   demands a constant expression. Call your own helper `const` and the whole
+   module dies at import with `SyntaxError: not a constant`, pointing at the
+   definition rather than the call.
+7. The bundled `requests` chokes on `Transfer-Encoding: chunked`, which plenty of
+   devices use.
+8. `re.finditer` and `re.findall` are absent, and the engine backtracks
+   recursively: a pattern with `[^"]*` over an attribute of a thousand characters
+   raises `RuntimeError: maximum recursion depth exceeded`. Parse those by hand.
+9. `asyncio.open_connection` does work, TLS included, and it is how you keep the
+   screen alive during a network call.
+10. `/cache` does not exist, although the filesystem layout names it. Create it
+    yourself or write somewhere else.
 
 The list moves as the firmware moves. `from mpos import LightsManager` used to
 raise and now works, which is exactly why code here resolves names across both
@@ -255,8 +347,9 @@ trusting a documented import path.
 ## Layout
 
     be.fri3d.pomodoro/     an app, in a folder named after its app id
-    be.weyn.dinerbadge/    idem; its dinerbadge_config.py is untracked,
-                           and optional: the badge is set up on the badge
+    be.weyn.dinerbadge/    messages from Home Assistant
+    be.weyn.badge/         the MQTT link, the badge's own sensors, the screen
+    be.weyn.muziek/        Spotify playlists on the Sonos speakers nearby
     badge.sh               mpremote wrapper
     tools/                 scripts that run on the badge, plus the packager
     tools/mcp/             MCP server exposing the badge over USB
@@ -265,6 +358,10 @@ trusting a documented import path.
                            plus the Home Assistant side of Berichtjes
     docs/images/           the screenshots used above
     dist/                  built .mpk files, not tracked
+
+Each app that needs secrets keeps them in an untracked `*_config.py` next to a
+`*_config.example.py` that is in the repo and empty. All of them are optional:
+the badge can be set up on the badge.
 
 Most badge apps live in their own repository, one app each. This one keeps the
 apps together because `badge.sh`, the stubs and the hardware notes are shared,

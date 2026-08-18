@@ -12,6 +12,7 @@ so close the Fri3d-IDE tab and any open REPL before using these tools.
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 try:
@@ -48,6 +49,43 @@ class BadgeError(RuntimeError):
     pass
 
 
+def _leave_raw_repl():
+    """Ctrl-B naar de badge, zodat MicroPythonOS weer draait.
+
+    mpremote gaat de raw REPL binnen met ctrl-A en komt er nooit meer uit: main()
+    eindigt op do_disconnect(), en dat sluit alleen de poort. De badge blijft dus
+    na elk commando in de raw REPL staan, en daar staat alles stil. De asyncio-lus
+    van het OS is namelijk geen aparte thread maar een taak naast aiorepl; de
+    friendly REPL laat die lus doorlopen, de raw REPL niet.
+
+    Zolang elk commando een soft reset deed viel dat niet op: de volgende
+    aanroep startte de badge toch opnieuw op. Sinds we dat weglaten viel het wel
+    op, hard: een service die verbonden was bleef verbonden maar pompte nooit
+    meer, en een bericht dat binnenkwam bleef in de broker hangen.
+
+    Mislukken mag zonder klacht. Dit is opruimwerk, geen commando.
+    """
+    try:
+        import serial
+        from serial.tools import list_ports
+    except ImportError:
+        return False
+    for poort in list_ports.comports():
+        # Alleen de badge, niet de Bluetooth-poorten van de Mac.
+        if poort.vid != 0x303A:
+            continue
+        try:
+            with serial.Serial(poort.device, 115200, timeout=0.2,
+                               write_timeout=0.5) as link:
+                link.write(b"\r\x02")     # ctrl-B: terug naar de friendly REPL
+                link.flush()
+                time.sleep(0.05)
+            return True
+        except Exception:
+            return False
+    return False
+
+
 def _run(args, timeout=DEFAULT_TIMEOUT):
     # "resume" scheelt een soft reset per aanroep. Zonder dat stuurt mpremote
     # bij elk commando eerst ctrl-C en dan ctrl-D voor het de raw REPL binnengaat
@@ -67,7 +105,11 @@ def _run(args, timeout=DEFAULT_TIMEOUT):
             "    pip3 install --user mpremote\n"
             "or point the MPREMOTE environment variable at it." % MPREMOTE)
     except subprocess.TimeoutExpired:
+        # Ook hier, anders blijft de badge staan na een commando dat vastliep.
+        _leave_raw_repl()
         raise BadgeError("timed out after %s s: %s" % (timeout, " ".join(cmd)))
+
+    _leave_raw_repl()
 
     output = ((proc.stdout or "") + (proc.stderr or "")).strip()
     if proc.returncode != 0:
