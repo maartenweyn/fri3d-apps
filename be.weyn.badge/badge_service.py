@@ -75,6 +75,7 @@ MQTT_PASS = None
 TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
 DISCOVERY_PREFIX = "homeassistant"
 SCREEN_OFF_S = 0          # 0 betekent: nooit uit
+DEBUG_LED = 0             # helderheid van het debug-lampje op de expander
 CONFIG_OK = False
 
 try:
@@ -87,6 +88,7 @@ try:
     TIMEZONE = getattr(_cfg, "TIMEZONE", TIMEZONE)
     DISCOVERY_PREFIX = getattr(_cfg, "DISCOVERY_PREFIX", DISCOVERY_PREFIX)
     SCREEN_OFF_S = getattr(_cfg, "SCREEN_OFF_S", SCREEN_OFF_S)
+    DEBUG_LED = getattr(_cfg, "DEBUG_LED", DEBUG_LED)
     CONFIG_OK = True
 except ImportError:
     print("badge: geen badge_config.py, standaardwaarden")
@@ -292,6 +294,35 @@ def migrate_prefs():
         return False
 
 
+def _expander():
+    import mpos
+    exp = getattr(mpos, "io_expander", None)
+    if exp is None:
+        import mpos.io_expander as exp
+    return exp
+
+
+def apply_debug_led(niveau):
+    """Het kleine lampje op de expander op een helderheid zetten, 0 is uit.
+
+    Staat af fabriek op 50 en brandt dus altijd, ook op een badge die de hele
+    nacht ligt te laden. De expander is een eigen microcontroller die zijn
+    instelling zelf bijhoudt, dus dit overleeft een herstart van de ESP32. Het
+    wordt toch bij elke keer laden opnieuw toegepast, want een reflash van die
+    firmware zet hem terug op 50 en dan sta je weer met een lampje in het donker.
+
+    Dit gaat niet over de twee groene lampjes en het rode van de lader. Die
+    hangen aan de CHRG- en STDBY-pinnen van de TP4056 en aan VUSB, volgens de
+    voedingspagina van het schema. Uitgangen van de laadchip zelf; geen software
+    komt daarbij."""
+    try:
+        _expander().debug_led = max(0, min(100, int(niveau)))
+        return True
+    except Exception as e:
+        print("badge: debug-LED niet te zetten:", e)
+        return False
+
+
 def load_prefs():
     """Lezen wat de instelschermen schrijven, en toepassen.
 
@@ -299,7 +330,7 @@ def load_prefs():
     client blijft geabonneerd op wat hij vroeg en blijft praten met de host die
     hij belde, dus het een of het ander wijzigen zonder opnieuw te verbinden
     laat de badge zitten terwijl hij er goed uitziet en niets hoort."""
-    global MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS, SCREEN_OFF_S
+    global MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS, SCREEN_OFF_S, DEBUG_LED
     name = BADGE_NAME
     before = (MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS)
     try:
@@ -312,8 +343,11 @@ def load_prefs():
         MQTT_USER = prefs.get_string("mqtt_user", MQTT_USER or "") or None
         MQTT_PASS = prefs.get_string("mqtt_pass", MQTT_PASS or "") or None
         SCREEN_OFF_S = prefs.get_int("screen_off_s", SCREEN_OFF_S)
+        DEBUG_LED = prefs.get_int("debug_led", DEBUG_LED)
     except Exception as e:
         print("badge: kon voorkeuren niet lezen:", e)
+
+    apply_debug_led(DEBUG_LED)
 
     renamed = set_badge_name(name)
     if not renamed and before != (MQTT_BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS):
@@ -539,14 +573,6 @@ def discovery_payloads():
 def _display():
     import mpos.ui
     return mpos.ui.main_display
-
-
-def _expander():
-    import mpos
-    exp = getattr(mpos, "io_expander", None)
-    if exp is None:
-        import mpos.io_expander as exp
-    return exp
 
 
 def _brightness(level):

@@ -40,6 +40,18 @@ DISCOVERY_PREFIX = "homeassistant"
 # ook aan bij de knop eronder; dat is hoe deze firmware het aanlevert.
 SCREEN_OFF_S = 0
 
+# Het kleine debug-lampje op de I2C-expander, 0..100. Nul is uit, en dat is de
+# standaard: af fabriek staat hij op 50 en brandt hij dus altijd, ook 's nachts
+# op een badge die ligt te laden. Ook in te stellen op de badge, achter
+# "Scherm en lichtjes".
+#
+# Dit gaat niet over de drie lampjes van de lader. C (rood) brandt tijdens het
+# laden, + (groen) als er USB in zit, en S (groen) als de batterij vol is. Die
+# hangen aan de CHRG- en STDBY-pinnen van de TP4056 en aan VUSB, volgens de
+# voedingspagina van het schema. Uitgangen van de laadchip zelf: geen software
+# komt daarbij, alleen tape of een soldeerbout.
+DEBUG_LED = 0
+
 # POSIX-tijdzone, als terugval voor het omrekenen van tijdstippen. De badge houdt
 # zijn klok in UTC en time.localtime() geeft UTC terug, ook met de tijdzone goed
 # ingesteld. Wat in Instellingen op de badge staat wint hierover. De string draagt

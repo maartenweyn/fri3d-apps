@@ -252,10 +252,14 @@ class _IOExpander:
     """
 
     lcd_brightness = 100
+    # The small debug LED on the same chip. Ships at 50, so it is always on,
+    # including all night on a badge that is charging.
+    debug_led = 50
 
     @classmethod
     def reset(cls):
         cls.lcd_brightness = 100
+        cls.debug_led = 50
 
 
 io_expander = _IOExpander

@@ -17,6 +17,7 @@ from mpos import Activity, Intent, InputActivity
 
 import badge_service as service
 from bgconnection import BadgeConnection
+from bglight import BadgeLight
 
 try:
     from mpos import SharedPreferences
@@ -30,30 +31,13 @@ COL_WARN = 0xCC5555
 ROW_HEIGHT = 44
 ROW_GAP = 6
 
-# Uit, en dan van kort naar lang. Onder de vijftien seconden gaat het scherm uit
-# terwijl je nog aan het lezen bent; boven het kwartier is het geen besparing
-# meer maar een lampje dat aan blijft.
-TIMEOUTS = (0, 15, 30, 60, 120, 300, 600, 900)
-
-
-def timeout_text(seconden):
-    if not seconden:
-        return "nooit"
-    if seconden < 60:
-        return "%d s" % seconden
-    if seconden % 60 == 0:
-        return "%d min" % (seconden // 60)
-    return "%d min %d s" % (seconden // 60, seconden % 60)
-
 
 class Badge(Activity):
 
     def __init__(self):
         super().__init__()
         self.name = ""
-        self.screen_off_s = 0
         self.name_label = None
-        self.timeout_label = None
         self.status = None
         self._frame_cb = None
         self._shown_status = None
@@ -62,7 +46,6 @@ class Badge(Activity):
 
     def onCreate(self):
         self.name = service.BADGE_NAME
-        self.screen_off_s = int(service.SCREEN_OFF_S or 0)
 
         screen = lv.obj()
         screen.set_style_pad_all(8, 0)
@@ -78,8 +61,10 @@ class Badge(Activity):
                                             self._edit_name)
         self._wide_button(screen, lambda: "Verbinding...",
                           self._open_connection)
-        self.timeout_label = self._stepper_row(screen, "Scherm uit na",
-                                               self._cycle_timeout)
+        # Schermtimeout en debug-LED staan op een eigen scherm. Hier passen er
+        # precies drie rijen, en de rijen scrollen niet.
+        self._wide_button(screen, lambda: "Scherm en lichtjes...",
+                          self._open_light)
 
         self.status = lv.label(screen)
         self._paint_status()
@@ -175,15 +160,9 @@ class Badge(Activity):
     def _open_connection(self):
         self.startActivity(Intent(activity_class=BadgeConnection))
 
-    def _cycle_timeout(self, delta):
-        try:
-            index = TIMEOUTS.index(self.screen_off_s)
-        except ValueError:
-            index = 0
-        index = min(len(TIMEOUTS) - 1, max(0, index + delta))
-        self.screen_off_s = TIMEOUTS[index]
-        if self.timeout_label is not None:
-            self.timeout_label.set_text(timeout_text(self.screen_off_s))
+    def _open_light(self):
+        self.startActivity(Intent(activity_class=BadgeLight))
+
 
     # --- rijen -------------------------------------------------------------
 
@@ -225,42 +204,8 @@ class Badge(Activity):
         self._focusable(btn)
         return label
 
-    def _row(self, parent, height):
-        row = lv.obj(parent)
-        row.set_size(lv.pct(100), height)
-        row.set_style_border_width(0, 0)
-        row.set_style_bg_opa(lv.OPA.TRANSP, 0)
-        row.set_style_pad_all(2, 0)
-        row.set_style_pad_column(8, 0)
-        self._no_scroll(row)
-        row.set_flex_flow(lv.FLEX_FLOW.ROW)
-        row.set_flex_align(lv.FLEX_ALIGN.START, lv.FLEX_ALIGN.CENTER,
-                           lv.FLEX_ALIGN.CENTER)
-        return row
 
-    def _step_button(self, parent, text, callback):
-        btn = lv.button(parent)
-        btn.set_size(48, 40)
-        btn.add_event_cb(lambda event, cb=callback: cb(), lv.EVENT.CLICKED, None)
-        label = lv.label(btn)
-        label.set_text(text)
-        label.center()
-        self._focusable(btn)
-        return btn
 
-    def _stepper_row(self, parent, text, cycle):
-        row = self._row(parent, ROW_HEIGHT)
-        name = lv.label(row)
-        name.set_text(text)
-        try:
-            name.set_flex_grow(1)
-        except Exception:
-            pass
-        self._step_button(row, "-", lambda c=cycle: c(-1))
-        value_label = lv.label(row)
-        value_label.set_text(timeout_text(self.screen_off_s))
-        self._step_button(row, "+", lambda c=cycle: c(1))
-        return value_label
 
     # --- bewaren -----------------------------------------------------------
 
@@ -269,7 +214,6 @@ class Badge(Activity):
         try:
             editor = SharedPreferences(service.PREFS_APP_ID).edit()
             editor.put_string("badge_name", name)
-            editor.put_int("screen_off_s", int(self.screen_off_s))
             editor.commit()
         except Exception as e:
             print("badge instellingen: kon niet bewaren:", e)

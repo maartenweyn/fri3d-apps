@@ -36,6 +36,7 @@ _config.MQTT_USER = "example-user"
 _config.MQTT_PASS = "example-secret"
 _config.DISCOVERY_PREFIX = "homeassistant"
 _config.SCREEN_OFF_S = 0
+_config.DEBUG_LED = 0
 _config.TIMEZONE = "CET-1CEST,M3.5.0,M10.5.0/3"
 sys.modules["badge_config"] = _config
 
@@ -106,6 +107,7 @@ def fresh_service(**prefs):
     service.screen_off = False
     service._bright_saved = None
     service.SCREEN_OFF_S = 0
+    service.DEBUG_LED = 0
     service.MQTT_BROKER = _config.MQTT_BROKER
     service.MQTT_PORT = _config.MQTT_PORT
     service.MQTT_USER = _config.MQTT_USER
@@ -119,6 +121,13 @@ def fresh_service(**prefs):
     svc.onStart(None)
     svc._pump()          # de eerste pomp verbindt
     return svc
+
+
+def _regel_in_bron(tekst):
+    for i, regel in enumerate(SOURCE.split("\n")):
+        if regel.strip() == tekst:
+            return i
+    return -1
 
 
 def configs():
@@ -498,6 +507,50 @@ equal("scherm uit", service.screen_off, True)
 service.SCREEN_OFF_S = 0
 service.screen_tick()
 equal("timeout op nooit doet het scherm weer aan", service.screen_off, False)
+
+
+# ===========================================================================
+# Het debug-lampje
+# ===========================================================================
+# Het kleine lampje op de expander staat af fabriek op 50 en brandt dus altijd,
+# ook 's nachts op een badge die ligt te laden. Van de vier lichtbronnen op deze
+# badge is dit de enige die software kan uitzetten: de vijf RGB-LEDs horen bij
+# de apps, en C, + en S hangen aan de CHRG- en STDBY-pinnen van de TP4056 en aan
+# VUSB. Dat zijn uitgangen van de laadchip, geen GPIO.
+
+svc = fresh_service()
+mpos.io_expander.debug_led = 50
+equal("op nul zetten lukt", service.apply_debug_led(0), True)
+equal("en het lampje is uit", mpos.io_expander.debug_led, 0)
+equal("een waarde erboven wordt afgekapt", service.apply_debug_led(500) and
+      mpos.io_expander.debug_led, 100)
+equal("en eronder ook", service.apply_debug_led(-5) and True, True)
+equal("negatief wordt nul", mpos.io_expander.debug_led, 0)
+
+# De voorkeur wordt toegepast bij het laden, niet alleen bewaard. De expander
+# houdt zijn eigen instelling bij over een herstart heen, maar een reflash van
+# die firmware zet hem terug op 50 en dan sta je weer met een lampje in het
+# donker.
+mpos.io_expander.debug_led = 50
+mpos.config._STORE.clear()
+mpos.config.SharedPreferences(service.PREFS_APP_ID).edit() \
+    .put_string("badge_name", "alice").put_int("debug_led", 0).commit()
+service.load_prefs()
+equal("load_prefs past de voorkeur toe", mpos.io_expander.debug_led, 0)
+
+mpos.io_expander.debug_led = 0
+mpos.config.SharedPreferences(service.PREFS_APP_ID).edit() \
+    .put_int("debug_led", 25).commit()
+service.load_prefs()
+equal("en een andere waarde ook", mpos.io_expander.debug_led, 25)
+
+# apply_debug_led draait op modulehoogte via load_prefs, dus _expander moet er
+# dan al zijn. Dezelfde valkuil als bij migrate_prefs, en dezelfde bewaking.
+i_exp = _regel_in_bron("def _expander():")
+i_apply = _regel_in_bron("def apply_debug_led(niveau):")
+i_load = _regel_in_bron("def load_prefs():")
+check("_expander staat voor apply_debug_led", 0 < i_exp < i_apply)
+check("en apply_debug_led voor load_prefs", i_apply < i_load)
 
 
 # ===========================================================================
