@@ -33,6 +33,21 @@ COL_TEXT = 0xFFFFFF
 COL_ACCENT = 0x3FBF7F
 COL_WARN = 0xCC5555
 
+# De knopkleur van dit thema, van het toestel afgelezen met get_style_bg_color:
+# oranje, met witte tekst erop. Niet gegokt, want de hele keuze hieronder hangt
+# ervan af.
+COL_KNOP = 0xF0A010
+
+# Waarmee je "dit is de gekozen box" op zo'n knop schrijft.
+#
+# Dat was COL_ACCENT, en dat groen haalt op dit oranje een contrast van 1,09 op
+# 1: gelijke helderheid, dus de letters verdwijnen gewoon. Mooi op een monitor,
+# onzichtbaar op de badge. De achtergrondkleur van het scherm haalt 8,2 op 1 en
+# leest als omgekeerde tekst, wat meteen ook duidelijker "gekozen" zegt dan een
+# kleurverschil dat je moet opmerken. De test rekent die verhouding na, zodat de
+# volgende mooie kleur niet opnieuw onleesbaar wordt.
+COL_GEKOZEN = COL_BG
+
 
 def color(hexwaarde):
     return lv.color_hex(hexwaarde)

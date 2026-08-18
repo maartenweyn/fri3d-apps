@@ -1,7 +1,8 @@
 """De lijst met Sonos-boxen.
 
-Een rij per speler, 44 hoog zodat een vinger raak is. De gekozen box staat in
-de accentkleur, en een speler die als slaaf in een groep hangt zegt dat erbij:
+Een rij per speler, 44 hoog zodat een vinger raak is. De gekozen box staat er
+omgekeerd op, donker op het oranje van de knop, en een speler die als slaaf in
+een groep hangt zegt dat erbij:
 hij weigert Play, dus het commando gaat naar de baas van zijn groep. Dat gebeurt
 vanzelf in mzstate.zone_baas, maar wie het scherm bekijkt moet wel snappen
 waarom de muziek elders begint.
@@ -85,7 +86,7 @@ class MuziekZones(Activity):
             knop, label = ui.knop(self.lijst, tekst,
                                   lambda zz=z: self._kies(zz), hoogte=44)
             if gekozen:
-                label.set_style_text_color(ui.color(ui.COL_ACCENT), 0)
+                label.set_style_text_color(ui.color(ui.COL_GEKOZEN), 0)
         tekst = state.status
         if state.bezig:
             tekst = (tekst + " ..." if tekst else "zoeken ...")

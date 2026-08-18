@@ -809,6 +809,38 @@ def test_speler_zonder_zone_opent_niets():
         scherm.onPause(scherm._view)
 
 
+def _luminantie(kleur):
+    r, g, b = (kleur >> 16 & 255) / 255.0, (kleur >> 8 & 255) / 255.0, (kleur & 255) / 255.0
+
+    def kanaal(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * kanaal(r) + 0.7152 * kanaal(g) + 0.0722 * kanaal(b)
+
+
+def _contrast(a, b):
+    la, lb = _luminantie(a), _luminantie(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_gekozen_box_is_leesbaar():
+    """De knopkleur van dit thema is oranje, van het toestel afgelezen.
+
+    De gekozen box stond in de accentkleur, en dat groen haalt daarop 1,09 op 1:
+    gelijke helderheid, dus de letters verdwenen. Op een monitor viel dat niet op,
+    op de badge wel. Deze test rekent de verhouding na zodat de volgende mooie
+    kleur niet opnieuw onleesbaar wordt."""
+    equal("de knopkleur is die van het toestel", ui.COL_KNOP, 0xF0A010)
+    verhouding = _contrast(ui.COL_KNOP, ui.COL_GEKOZEN)
+    check("de gekozen box haalt minstens 4,5 op 1 tegen de knop "
+          "(nu %.2f)" % verhouding, verhouding >= 4.5)
+    check("het oude groen zou blijven zakken, dus dat is geen optie meer",
+          _contrast(ui.COL_KNOP, ui.COL_ACCENT) < 2.0)
+    # De niet-gekozen rijen houden de witte tekst van het thema; die hoeft niet
+    # aan dezelfde eis te voldoen, maar moet er wel duidelijk van verschillen.
+    check("gekozen en niet-gekozen verschillen sterk",
+          _contrast(ui.COL_GEKOZEN, ui.COL_TEXT) >= 4.5)
+
+
 def test_zones_scherm():
     scherm, taken, echt = met_scherm(MuziekZones)
     try:
@@ -826,6 +858,10 @@ def test_zones_scherm():
         equal("een rij per box", len(knoppen), 2)
         labels = [k.children[0].text for k in knoppen]
         equal("de gekozen box is gemerkt", labels[0], "> Keuken")
+        equal("en staat in de leesbare kleur",
+              knoppen[0].children[0].styles.get("text_color"), ui.COL_GEKOZEN)
+        check("de andere rijen houden de themakleur",
+              "text_color" not in knoppen[1].children[0].styles)
         check("een gegroepeerde box zegt dat erbij",
               "gegroepeerd" in labels[1])
 
