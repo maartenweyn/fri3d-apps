@@ -2,6 +2,38 @@
 
 ## Berichtjes
 
+### 0.6.0
+
+One badge can now send as well as receive: a screen full of buttons.
+
+**The app knows no names and no texts.** Home Assistant publishes what a badge
+may send, retained, on `home/badges/<name>/buttons`, and the badge draws whatever
+arrives. That is also the entire on/off switch: a badge nobody publishes to has
+no send button, so giving one node buttons is one publish rather than a setting
+on every device. Changing the buttons is another publish; nothing is
+reinstalled, and no name of anybody's child is ever in this repository.
+
+A press puts a request on `home/badges/<name>/send`, and an automation turns that
+into the same script the dashboard calls. Publishing straight to the other
+badge's `msg` topic would work and would skip Home Assistant, and then the
+dashboard stays grey: no timestamp, no red, no green.
+
+The figures are drawn from rectangles rather than loaded from files. This
+firmware's symbol font has no people in it, and shipping a PNG would mean the app
+knowing what "a woman" is. Now the configuration says `figure: woman` and the
+screen draws four rectangles; what they stand for is decided in Home Assistant.
+`symbol` and `initial` are there for buttons that are not people.
+
+Two refusals. A badge will not send to itself, checked when drawing the buttons,
+again when publishing, and once more in the automation: a badge that makes itself
+beep is never what anyone meant. And a press that cannot be published is not held
+for later the way an acknowledgement is. "Dinner in ten minutes" half an hour
+late is not a message, it is a lie; the screen says it failed and you press
+again.
+
+246 offline checks, the grid measurements among them: every button at least 44
+by 44, because sending events still proves nothing about a finger.
+
 ### 0.4.0
 
 The badge reports its own battery, and says so to Home Assistant itself.

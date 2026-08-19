@@ -60,6 +60,8 @@ is the point of it: type an address, go back, come in again, and it either says
     home/badges/<name>/ack      the badge publishes when the button is tapped
     home/badges/<name>/state    battery, voltage and signal strength, retained
     home/badges/<name>/status   online or offline, retained, also the last will
+    home/badges/<name>/buttons  what this badge may send, retained, optional
+    home/badges/<name>/send     a request from this badge, only if it has buttons
 
 ## 3. Paste the Home Assistant side
 
@@ -70,6 +72,7 @@ is the point of it: type an address, go back, come in again, and it either says
 | `03-mqtt.yaml` | your MQTT config, normally `mqtt.yaml` |
 | `04-status-sensors.yaml` | your template config, normally `sensor_template.yaml` |
 | `05-lovelace-card.yaml` | pasted into a dashboard, not into a config file |
+| `06-badge-buttons.yaml` | your automation config, only if you want a badge that sends |
 
 Each file starts with a comment saying where it goes and what to watch for.
 
@@ -138,6 +141,50 @@ yourself under Settings, Entities if that bothers you.
 If nothing appears, discovery is off or on a different prefix. It is on by
 default; the setting lives in the MQTT integration's own options, and
 `DISCOVERY_PREFIX` in `messages_config.py` has to match it.
+
+## A badge that sends
+
+Optional, and off unless you turn it on. A badge in the kitchen is a better place
+to call people to dinner from than a phone you have to unlock.
+
+`06-badge-buttons.yaml` has both halves. The first publishes, retained, what one
+badge may send:
+
+```json
+{"title": "Call", "buttons": [
+  {"label": "15 min", "target": "alice", "text": "Dinner within 15 minutes", "figure": "woman"},
+  {"label": "now",    "target": "bob",   "text": "Dinner is ready",          "figure": "man"}
+]}
+```
+
+That publish is the whole switch. A badge nobody publishes to has no send button,
+so you are turning it on for one badge rather than off for the rest. Change the
+buttons and the badge follows within a second; nothing is reinstalled.
+
+The second half listens on `home/badges/+/send` and calls
+`script.send_badge_message`, so a press on a badge is tracked exactly like a
+press on the dashboard. The badge deliberately does not publish to the other
+badge's `msg` topic: that would skip Home Assistant, and then the message arrives
+and your dashboard stays grey.
+
+| Field | What it does |
+| --- | --- |
+| `target` | the badge to send to, lowercase, as typed on that badge |
+| `text` | what appears on its screen |
+| `label` | what appears on the button, fourteen characters at most |
+| `figure` | `woman`, `man` or `person`, drawn on the badge from rectangles |
+| `symbol` | an LVGL symbol name instead, for buttons that are not people |
+| `initial` | one or two characters instead, drawn large |
+| `color` | six hex digits for the figure or the initial |
+
+Eight buttons land as four columns by two rows, twelve as four by three. Past
+twelve they are dropped rather than shrunk: a button too small to hit is not a
+button.
+
+A badge refuses to send to itself, and the automation refuses it again. A press
+that cannot be published is not held for later the way an acknowledgement is:
+"dinner in ten minutes" half an hour late is not a message, so the screen says it
+failed and you press again.
 
 ## How the status works
 

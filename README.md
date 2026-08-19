@@ -115,6 +115,8 @@ minutes, most of it pasting YAML.
 - **Configured on the badge.** How long the LEDs nag, and whether they nag at
   all, sit behind the gear button. The name of this badge and the broker are one
   button further along, in the Badge app.
+- **One badge can also send.** A screen of buttons, but only on a badge Home
+  Assistant has published a button set to. See below.
 
 #### On the dashboard
 
@@ -135,6 +137,50 @@ That status is a template sensor rather than an automation: a template
 containing `now()` is re-rendered every minute, so the fall back to grey happens
 by itself, with no timer to survive a restart and nothing arriving on your phone
 at dinner time.
+
+#### Sending from a badge
+
+A badge in the kitchen is a better place to call people to dinner from than a
+phone you have to unlock. So one badge can carry a screen of buttons.
+
+**The app knows no names and no texts.** Home Assistant publishes what a badge
+may send, retained, on `home/badges/<name>/buttons`, and the badge draws
+whatever arrives:
+
+```json
+{"title": "Call", "buttons": [
+  {"label": "15 min", "target": "alice", "text": "Dinner within 15 minutes", "figure": "woman"},
+  {"label": "now",    "target": "bob",   "text": "Dinner is ready",          "figure": "man"}
+]}
+```
+
+That is also the entire on/off switch. A badge nobody publishes to has no send
+button at all, so giving one node buttons is one publish rather than a setting
+on every device. Changing the buttons is another publish; nothing is
+reinstalled, and no name of anybody's child is ever in this repository.
+
+A press puts a request on `home/badges/<name>/send`, and an automation turns
+that into the same script the dashboard calls. Publishing straight to the other
+badge's `msg` topic would work and would skip Home Assistant, and then the
+dashboard stays grey: no timestamp, no red, no green. One place decides what
+sending means.
+
+The figures are drawn from rectangles rather than loaded from files. This
+firmware's symbol font has no people in it, and shipping a PNG would mean the
+app knowing what "a woman" is. Now the configuration says `figure: woman` and
+the app draws four rectangles; what they stand for is decided in Home Assistant.
+`symbol` (an LVGL symbol name) and `initial` (one or two characters) are there
+for buttons that are not people.
+
+Two refusals worth knowing about. A badge will not send to itself, checked both
+when drawing the buttons and when publishing, and again in the automation: a
+badge that makes itself beep is never what anyone meant. And a press that cannot
+be published is not held for later the way an acknowledgement is. "Dinner in ten
+minutes" half an hour late is not a message, it is a lie; the screen says it
+failed and you press again.
+
+The YAML for both halves is in
+[docs/berichtjes-homeassistant/06-badge-buttons.yaml](docs/berichtjes-homeassistant/06-badge-buttons.yaml).
 
 ### Badge — `tech.weyn.badgecontroller`
 
@@ -470,7 +516,7 @@ Everything except the pixels runs on desktop Python against stubs for `lvgl`
 and `mpos`:
 
     python3 tests/test_pomodoro.py      # 73 checks
-    python3 tests/test_messages.py      # 174 checks
+    python3 tests/test_messages.py      # 246 checks
     python3 tests/test_badge.py         # 2115 checks
     python3 tests/test_speakers.py      # 466 checks
     python3 tests/test_autoupdate.py    # 976 checks

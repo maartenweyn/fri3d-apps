@@ -1,0 +1,98 @@
+# Buttons on a badge, so one badge can send instead of only receive.
+#
+# Goes into your automation config. With
+# `automation: !include_dir_merge_list automations/` that means a file in that
+# directory, not automations.yaml, which is then not read at all.
+#
+# Two halves. The first publishes what one badge may send; the second turns a
+# press on that badge into the same script your dashboard calls.
+#
+# The badge itself knows no names and no texts. It draws whatever arrives on
+# `home/badges/<name>/buttons` and puts a request on `home/badges/<name>/send`.
+# So giving one badge buttons is one retained publish, not a setting on every
+# device: a badge nobody publishes to simply has no send button.
+
+# --- 1. what this badge may send --------------------------------------------
+#
+# Retained, so the badge has its panel back after a reboot without waiting for
+# anything. Republished when Home Assistant starts, which matters if your broker
+# ever loses its retained store.
+#
+# Change the buttons here and every badge that shows them updates within a
+# second. Nothing to reinstall.
+#
+# Per button:
+#   target   the badge to send to, lowercase, as typed on that badge
+#   text     what appears on its screen. Keep it short; 320 by 240.
+#   label    what appears on the button. Fourteen characters at most.
+#   figure   woman | man | person, drawn on the badge from rectangles.
+#            Optional. The badge's symbol font has no people in it, so these are
+#            drawn rather than loaded, and what they stand for is decided here.
+#   symbol   an LVGL symbol name (BELL, OK, ...) instead of a figure
+#   initial  one or two characters instead, drawn large
+#   color    six hex digits for the figure or the initial. White by default,
+#            which is what reads on the button colour of the default theme.
+#
+# Eight buttons land as four columns by two rows, twelve as four by three. More
+# than twelve are dropped: the badge would rather show fewer buttons than
+# buttons too small to hit.
+
+- id: badge_buttons_publish
+  alias: "Badge: publish the button set"
+  description: >-
+    Puts the button panel on one badge. Only the badge named here gets buttons;
+    the others keep the receive-only screen.
+  mode: single
+  triggers:
+    - trigger: homeassistant
+      event: start
+  actions:
+    - action: mqtt.publish
+      data:
+        topic: home/badges/kitchen/buttons
+        retain: true
+        payload: >-
+          {"title": "Call", "buttons": [
+            {"label": "15 min", "target": "alice", "text": "Dinner within 15 minutes", "figure": "woman"},
+            {"label": "10 min", "target": "alice", "text": "Dinner within 10 minutes", "figure": "woman"},
+            {"label": "5 min", "target": "alice", "text": "Dinner within 5 minutes", "figure": "woman"},
+            {"label": "now", "target": "alice", "text": "Dinner is ready", "figure": "woman"},
+            {"label": "15 min", "target": "bob", "text": "Dinner within 15 minutes", "figure": "man"},
+            {"label": "10 min", "target": "bob", "text": "Dinner within 10 minutes", "figure": "man"},
+            {"label": "5 min", "target": "bob", "text": "Dinner within 5 minutes", "figure": "man"},
+            {"label": "now", "target": "bob", "text": "Dinner is ready", "figure": "man"}
+          ]}
+
+# --- 2. a press on a badge --------------------------------------------------
+#
+# The badge does not publish to the other badge's topic directly. It could, and
+# then the message would arrive and your dashboard would stay grey: no
+# timestamp, no red, no green. Routing it through the same script the dashboard
+# uses keeps one place deciding what sending means, and Home Assistant gets to
+# see who sent it.
+
+- id: badge_send_request
+  alias: "Badge: send request from a badge"
+  description: >-
+    Turns a button press on a badge into script.send_badge_message, so it is
+    tracked exactly like a press on the dashboard.
+  mode: queued
+  max: 10
+  triggers:
+    - trigger: mqtt
+      topic: home/badges/+/send
+  conditions:
+    # A badge that sends to itself makes itself beep, which is never what anyone
+    # meant. The badge refuses this too; this is the half that a wrong button set
+    # cannot get around.
+    - condition: template
+      value_template: >-
+        {{ trigger.payload_json.target is defined
+           and trigger.payload_json.text is defined
+           and (trigger.payload_json.target | lower)
+               != (trigger.topic.split('/')[2] | lower) }}
+  actions:
+    - action: script.send_badge_message
+      data:
+        target: "{{ trigger.payload_json.target | lower }}"
+        text: "{{ trigger.payload_json.text }}"

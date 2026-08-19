@@ -14,6 +14,7 @@ from mpos import Activity, Intent
 
 import messages_service as service
 from msgsettings import MessagesSettings
+from msgsend import MessagesSend
 
 
 def _const(name, *spellings, **kw):
@@ -46,6 +47,9 @@ ALIGN_TOP_RIGHT = _const("top_right", "ALIGN.TOP_RIGHT", "ALIGN_TOP_RIGHT",
                          default=None)
 ALIGN_BOTTOM_LEFT = _const("bottom_left", "ALIGN.BOTTOM_LEFT",
                            "ALIGN_BOTTOM_LEFT", default=None)
+ALIGN_BOTTOM_RIGHT = _const("bottom_right", "ALIGN.BOTTOM_RIGHT",
+                            "ALIGN_BOTTOM_RIGHT", default=None)
+HIDDEN = _const("hidden", "obj.FLAG.HIDDEN", "OBJ_FLAG_HIDDEN", default=None)
 
 COL_BG = 0x1A1A2E
 COL_DIM = 0x8890A0
@@ -70,6 +74,15 @@ def _gear():
     return "cfg"
 
 
+def _send_symbol():
+    symbols = getattr(lv, "SYMBOL", None)
+    for name in ("ENVELOPE", "RIGHT", "NEW_LINE", "BELL"):
+        value = getattr(symbols, name, None) if symbols else None
+        if isinstance(value, str) and value:
+            return value
+    return ">"
+
+
 class Messages(Activity):
 
     def __init__(self):
@@ -78,7 +91,9 @@ class Messages(Activity):
         self._shown_seq = -1
         self._shown_connected = None
         self._shown_name = None
+        self._shown_send = None
         self._frame_cb = None
+        self.send_btn = None
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -147,6 +162,21 @@ class Messages(Activity):
         gear_label.set_text(_gear())
         gear_label.center()
 
+        # Zelf sturen. Alleen op een badge waar Home Assistant knoppen naartoe
+        # gepubliceerd heeft; op alle andere is deze knop er niet. Dat is meteen
+        # de hele instelling: één node knoppen geven is één keer publiceren.
+        self.send_btn = lv.button(self.screen)
+        self.send_btn.set_size(56, 50)
+        if ALIGN_BOTTOM_RIGHT is not None:
+            self.send_btn.align(ALIGN_BOTTOM_RIGHT, 0, -6)
+        else:
+            self.send_btn.align(lv.ALIGN.BOTTOM_MID, 128, -6)
+        self.send_btn.add_event_cb(self._on_send, lv.EVENT.CLICKED, None)
+        send_label = lv.label(self.send_btn)
+        send_label.set_text(_send_symbol())
+        send_label.center()
+        self._show_send(False)
+
         # The badge d-pad drives whatever sits in the default focus group, so
         # both buttons work without touching the screen.
         group = lv.group_get_default()
@@ -162,6 +192,7 @@ class Messages(Activity):
         self._shown_seq = -1          # force a repaint on every entry
         self._shown_connected = None
         self._shown_name = None       # the name may have changed in settings
+        self._shown_send = None
         self._tick_on()
         self._refresh()
 
@@ -229,6 +260,27 @@ class Messages(Activity):
             self._paint_message(state[0])
         self._paint_link()
         self._paint_name()
+        self._paint_send()
+
+    def _paint_send(self):
+        # Op de naam mee cachen: die bepaalt welke knoppen zichtbaar zijn, want
+        # naar zichzelf sturen mag een badge niet.
+        state = (service.buttons_seq, service.CHILD_NAME)
+        if state == self._shown_send:
+            return
+        self._shown_send = state
+        self._show_send(bool(service.visible_buttons()))
+
+    def _show_send(self, visible):
+        if self.send_btn is None or HIDDEN is None:
+            return
+        if visible:
+            try:
+                self.send_btn.remove_flag(HIDDEN)
+            except Exception:
+                self.send_btn.clear_flag(HIDDEN)
+        else:
+            self.send_btn.add_flag(HIDDEN)
 
     def _paint_name(self):
         name = service.CHILD_NAME
@@ -314,3 +366,6 @@ class Messages(Activity):
 
     def _on_settings(self, event):
         self.startActivity(Intent(activity_class=MessagesSettings))
+
+    def _on_send(self, event):
+        self.startActivity(Intent(activity_class=MessagesSend))

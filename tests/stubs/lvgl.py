@@ -16,6 +16,8 @@ class Obj:
         self.state = set()
         self.styles = {}
         self.size = None
+        self.pos = None
+        self.flags = set()
         if parent is not None:
             parent.children.append(self)
 
@@ -29,6 +31,24 @@ class Obj:
 
     def set_size(self, w, h):
         self.size = (w, h)
+
+    def set_pos(self, x, y):
+        self.pos = (x, y)
+
+    # Flags are tracked rather than swallowed: "the button is hidden" is a claim
+    # a test should be able to make, and a stub that answered every add_flag with
+    # None would let a screen that never hides anything pass.
+    def add_flag(self, flag):
+        self.flags.add(flag)
+
+    def remove_flag(self, flag):
+        self.flags.discard(flag)
+
+    def clear_flag(self, flag):
+        self.flags.discard(flag)
+
+    def has_flag(self, flag):
+        return flag in self.flags
 
     def set_text(self, t):
         self.text = t
@@ -58,6 +78,7 @@ class Obj:
         let a screen that rebuilds a list keep counting the old rows."""
         for child in self.children:
             child.parent = None
+            DEFAULT_GROUP.remove_obj(child)
         self.children = []
 
     def delete(self):
@@ -85,6 +106,22 @@ def layer_top():
 
 def obj(parent=None):
     return Obj(parent)
+
+
+class _ObjFlags:
+    """The names the Fri3d 2026 build hangs off lv.obj.FLAG."""
+    HIDDEN = 1
+    CLICKABLE = 2
+    CLICK_FOCUSABLE = 4
+    PRESS_LOCK = 8
+    SCROLLABLE = 16
+    SCROLL_ELASTIC = 32
+    SCROLL_MOMENTUM = 64
+    SCROLL_CHAIN_HOR = 128
+    SCROLL_CHAIN_VER = 256
+
+
+obj.FLAG = _ObjFlags
 
 
 def label(parent=None):

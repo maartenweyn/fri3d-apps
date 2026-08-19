@@ -105,6 +105,7 @@ import messages_service as service                  # noqa: E402
 from messages_service import MessagesService      # noqa: E402
 from messages import Messages                     # noqa: E402
 from msgsettings import MessagesSettings             # noqa: E402
+from msgsend import MessagesSend, grid                # noqa: E402
 
 FAILURES = []
 CHECKS = {"n": 0}
@@ -167,6 +168,10 @@ def fresh_service(met_brug=True):
     service.LED_ALERT = True
     service.ACK_TIMEOUT_MIN = 30
     service.CHILD_NAME = "badge"
+    service.buttons = []
+    service.buttons_title = service.DEFAULT_SEND_TITLE
+    service.buttons_seq = 0
+    service.send_error = None
 
     svc = MessagesService()
     svc.onCreate()
@@ -180,8 +185,8 @@ def fresh_service(met_brug=True):
 # ===========================================================================
 
 svc = fresh_service()
-equal("de app abonneert zich op het achtervoegsel en niet op een topic",
-      sorted(FakeBridge.subscribers), ["msg"])
+equal("de app abonneert zich op achtervoegsels en niet op topics",
+      sorted(FakeBridge.subscribers), ["buttons", "msg"])
 equal("de naam van de badge is geleend", service.CHILD_NAME, "alice")
 equal("en de verbinding ook", service.connected, True)
 equal("geen klacht als de brug er is", service.bridge_missing_reason(), None)
@@ -195,7 +200,8 @@ sys.modules[service.BRIDGE_MODULE] = FakeBridge
 svc._pump()
 equal("een brug die later opstart wordt alsnog gevonden",
       service.connected, True)
-equal("en er wordt alsnog geabonneerd", sorted(FakeBridge.subscribers), ["msg"])
+equal("en er wordt alsnog geabonneerd", sorted(FakeBridge.subscribers),
+      ["buttons", "msg"])
 
 # Zonder brug mag niets omvallen: geen tijd, geen naam, geen ack, maar ook geen
 # traceback.
@@ -522,6 +528,211 @@ equal("en de wachttijd is mee",
 mpos.config._STORE.clear()
 equal("zonder oude voorkeuren valt er niets over te nemen",
       service.migrate_prefs(), False)
+
+
+# ===========================================================================
+# Zelf sturen: de knoppen
+# ===========================================================================
+
+import json as _json                                   # noqa: E402
+
+KNOPPEN = _json.dumps({
+    "title": "Roepen",
+    "buttons": [
+        {"label": "15 eten", "target": "nina", "text": "Eten binnen 15 minuten",
+         "figure": "woman", "color": "e05a8a"},
+        {"label": "nu eten", "target": "nina", "text": "Eten is klaar",
+         "figure": "woman", "color": "e05a8a"},
+        {"label": "15 eten", "target": "mattijs", "text": "Eten binnen 15 minuten",
+         "figure": "man", "color": "3a7bd5"},
+        {"label": "nu eten", "target": "mattijs", "text": "Eten is klaar",
+         "figure": "man", "color": "3a7bd5"},
+    ],
+})
+
+svc = fresh_service()
+equal("een badge zonder configuratie heeft geen knoppen",
+      service.visible_buttons(), [])
+
+FakeBridge.deliver("buttons", KNOPPEN)
+equal("de knoppen komen binnen", len(service.buttons), 4)
+equal("met hun eigen titel", service.buttons_title, "Roepen")
+equal("doel en tekst blijven heel", service.buttons[0]["target"], "nina")
+equal("en de tekst ook", service.buttons[0]["text"], "Eten binnen 15 minuten")
+equal("het opschrift is wat er staat", service.buttons[0]["label"], "15 eten")
+equal("de vorm reist mee", service.buttons[2]["figure"], "man")
+equal("er is iets veranderd", service.buttons_seq, 1)
+
+# Twee keer hetzelfde publiceren is geen wijziging. Anders bouwt het scherm zijn
+# raster opnieuw op bij elke herverbinding, en dat ziet een vinger als knipperen.
+FakeBridge.deliver("buttons", KNOPPEN)
+equal("dezelfde configuratie verandert niets", service.buttons_seq, 1)
+
+# De app kent geen namen. Alles wat er staat komt van Home Assistant, dus alles
+# wat er niet deugt hoort hier te sneuvelen en niet op het scherm.
+svc = fresh_service()
+service.set_buttons(_json.dumps([
+    {"target": "nina", "text": "Kom eens"},
+    {"target": "", "text": "Zonder doel"},
+    {"target": "bob", "text": ""},
+    "geen woordenboek",
+    {"target": "BOB", "text": "  Hoofdletters en spaties  "},
+]))
+equal("wat geen doel of tekst heeft valt af", len(service.buttons), 2)
+equal("een doel wordt kleingeletterd", service.buttons[1]["target"], "bob")
+equal("en de tekst getrimd", service.buttons[1]["text"], "Hoofdletters en spaties")
+equal("zonder opschrift wordt het het doel", service.buttons[0]["label"], "Nina")
+
+# Meer knoppen dan er op het scherm passen is geen fout, maar ze allemaal tonen
+# maakt er knoppen van die je niet raakt.
+svc = fresh_service()
+service.set_buttons(_json.dumps([{"target": "nina", "text": "n%d" % i}
+                                 for i in range(30)]))
+equal("de lijst wordt afgekapt", len(service.buttons), service.MAX_BUTTONS)
+
+# Een lege retained payload is hoe MQTT "vergeet dit" zegt.
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+FakeBridge.deliver("buttons", "")
+equal("een lege payload wist de knoppen", service.buttons, [])
+
+# Stukke JSON is iets anders dan een lege payload: dan is er ergens een fout
+# gemaakt, en een werkend paneel weggooien helpt niemand.
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+FakeBridge.deliver("buttons", "{dit is geen json")
+equal("onleesbare configuratie laat staan wat er stond",
+      len(service.buttons), 4)
+
+# Na een herstart moeten de knoppen er meteen staan, niet pas als de broker
+# antwoordt.
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+service.buttons = []
+service.buttons_seq = 0
+equal("de knoppen zijn bewaard", service.load_cached_buttons(), True)
+equal("en staan er weer", len(service.buttons), 4)
+
+# Naar zichzelf sturen laat een badge zichzelf piepen. Dat is nooit de bedoeling,
+# en het wordt gefilterd op de naam van nu en niet op die van toen de knoppen
+# binnenkwamen.
+svc = fresh_service()
+FakeBridge.deliver("buttons", _json.dumps([
+    {"target": "nina", "text": "Kom eens"},
+    {"target": "alice", "text": "Naar mezelf"},
+]))
+equal("de knop naar zichzelf wordt niet getoond",
+      [b["target"] for b in service.visible_buttons()], ["nina"])
+FakeBridge.BADGE_NAME = "nina"
+svc._pump()
+equal("en na een hernoeming schuift dat mee",
+      [b["target"] for b in service.visible_buttons()], ["alice"])
+
+
+# ===========================================================================
+# Zelf sturen: de druk
+# ===========================================================================
+
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+knop = service.visible_buttons()[0]
+equal("een druk komt weg", service.publish_send(knop), True)
+suffix, payload = FakeBridge.published[-1]
+equal("op het send-topic van deze badge", suffix, "send")
+verzoek = _json.loads(payload)
+equal("met het doel erin", verzoek["target"], "nina")
+equal("de tekst voluit", verzoek["text"], "Eten binnen 15 minuten")
+equal("en wie het stuurde", verzoek["from"], "alice")
+check("niets blijft hangen", service.pending_ack is None)
+check("en er is niets mis", service.send_error is None)
+
+# Een bevestiging blijft wachten tot ze aankomt. "Eten binnen tien minuten" is
+# een half uur later geen bericht meer maar een leugen, dus die niet.
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+knop = service.visible_buttons()[0]
+FakeBridge.publish_ok = False
+equal("zonder link mislukt de druk", service.publish_send(knop), False)
+equal("en het zegt waarom", service.send_error, "geen verbinding")
+FakeBridge.publish_ok = True
+svc._pump()
+equal("er wordt niets nagestuurd", FakeBridge.published, [])
+
+svc = fresh_service(met_brug=False)
+equal("zonder brug mislukt de druk ook",
+      service.publish_send({"target": "nina", "text": "Kom"}), False)
+equal("met de reden die ertoe doet", service.send_error, "Badge-app draait niet")
+
+svc = fresh_service()
+equal("naar zichzelf sturen wordt geweigerd",
+      service.publish_send({"target": "alice", "text": "Kom"}), False)
+equal("ook als de knop er langs het scherm om komt",
+      service.send_error, "niet naar zichzelf")
+
+
+# ===========================================================================
+# Zelf sturen: het scherm
+# ===========================================================================
+
+# Het raster, zonder scherm na te rekenen. Onder de 44 is een knop een knop die
+# je niet raakt.
+for aantal, kolommen in ((1, 2), (4, 2), (6, 3), (8, 4), (12, 4)):
+    cols, rows, cell_w, cell_h = grid(aantal)
+    equal("%d knoppen geeft %d kolommen" % (aantal, kolommen), cols, kolommen)
+    check("%d knoppen: elke knop is minstens 44 hoog" % aantal, cell_h >= 44)
+    check("%d knoppen: en minstens 44 breed" % aantal, cell_w >= 44)
+    check("%d knoppen: alles past op 320 breed" % aantal,
+          cols * cell_w + (cols - 1) * 6 <= 308)
+    check("%d knoppen: en op 240 hoog" % aantal,
+          rows * cell_h + (rows - 1) * 6 <= 206)
+
+equal("acht knoppen worden vier bij twee", grid(8)[:2], (4, 2))
+equal("twaalf knoppen vier bij drie", grid(12)[:2], (4, 3))
+
+
+def stuurscherm():
+    scherm = MessagesSend()
+    scherm.onCreate()
+    scherm.onResume(scherm._view)
+    return scherm
+
+
+svc = fresh_service()
+FakeBridge.deliver("buttons", KNOPPEN)
+scherm = stuurscherm()
+knoppen = [k for k in scherm.holder.children if k.cbs]
+equal("er staat een knop per configuratieregel", len(knoppen), 4)
+equal("de titel komt uit de configuratie", scherm.title.text, "Roepen")
+check("de knoppen zijn vingergroot",
+      all(k.size is not None and k.size[1] >= 44 for k in knoppen))
+
+knoppen[0].click()
+equal("drukken stuurt", FakeBridge.published[-1][0], "send")
+equal("en het scherm zegt het", scherm.status.text, "verstuurd")
+
+FakeBridge.publish_ok = False
+knoppen[1].click()
+equal("een mislukte druk zegt waarom", scherm.status.text, "geen verbinding")
+
+# Zonder configuratie is het scherm niet leeg maar behulpzaam: er staat waar de
+# knoppen vandaan zouden moeten komen.
+svc = fresh_service()
+scherm = stuurscherm()
+equal("zonder knoppen geen knoppen",
+      [k for k in scherm.holder.children if k.cbs], [])
+check("maar wel uitleg",
+      any("buttons" in (k.text or "") for k in scherm.holder.children))
+
+# De stuurknop op het hoofdscherm bestaat alleen op een badge die mag sturen.
+svc, hoofd = fresh_screen()
+check("geen stuurknop zonder configuratie",
+      hoofd.send_btn.has_flag(lv.obj.FLAG.HIDDEN))
+FakeBridge.deliver("buttons", KNOPPEN)
+hoofd._refresh()
+check("met configuratie staat hij er",
+      not hoofd.send_btn.has_flag(lv.obj.FLAG.HIDDEN))
+check("en hij is vingergroot",
+      hoofd.send_btn.size is not None and hoofd.send_btn.size[1] >= 44)
 
 # ===========================================================================
 

@@ -25,6 +25,7 @@ verhaal.
 Niets hier maakt LVGL-objecten aan: een service heeft geen scherm.
 """
 
+import json
 import sys
 import time
 
@@ -67,6 +68,26 @@ BRIDGE_MODULE = "badge_service"
 SUFFIX_MSG = "msg"
 SUFFIX_ACK = "ack"
 
+# Een badge kan ook zelf sturen. Home Assistant zet de knoppen retained op
+# `buttons`, en een druk zet een verzoek op `send`, waar een automatisatie in
+# Home Assistant op afgaat.
+#
+# **Niet rechtstreeks naar het `msg`-topic van de andere badge.** Dat werkt wel
+# en gaat langs Home Assistant heen, en dan blijft het dashboard grijs: geen
+# tijdstempel, geen rood, geen groen. Eén plek hoort te bepalen wat sturen
+# betekent, en dat is de plek waar de knoppen op het dashboard ook langsgaan.
+SUFFIX_BUTTONS = "buttons"
+SUFFIX_SEND = "send"
+
+# Twaalf past er op 320 bij 240 in een raster van vier bij drie, met knoppen die
+# nog groot genoeg zijn voor een vinger. Meer tonen betekent kleinere knoppen, en
+# dat is precies hoe een knop een knop wordt die je niet raakt.
+MAX_BUTTONS = 12
+LABEL_MAX = 14
+TEXT_MAX = 120
+BUTTONS_CACHE_MAX = 2000
+DEFAULT_SEND_TITLE = "Sturen"
+
 # --- configuratie -----------------------------------------------------------
 # Alleen nog wat over berichten gaat. Broker, login en de naam van de badge
 # staan in tech.weyn.badgecontroller.
@@ -95,6 +116,12 @@ last_error = None
 leds_lit = False         # wat de LEDs doen, zodat de tests het kunnen zien
 pending_ack = None       # een bevestiging waar de link niet voor omhoog was
 CHILD_NAME = "badge"     # de naam van de badge, geleend van de brug
+
+buttons = []             # wat Home Assistant op deze badge wil zien staan
+buttons_title = DEFAULT_SEND_TITLE
+buttons_seq = 0          # loopt op bij elke wijziging, zodat het scherm weet
+                         # dat het opnieuw moet tekenen
+send_error = None        # waarom de laatste druk niet wegkwam, of None
 
 _service = None
 
@@ -252,6 +279,175 @@ def publish_ack(seq=None):
     return False
 
 
+# --- zelf sturen ------------------------------------------------------------
+# De app kent geen enkele naam en geen enkele tekst. Home Assistant publiceert
+# retained op `home/badges/<naam>/buttons` wat deze badge mag sturen, en de app
+# tekent wat er binnenkomt. Een badge waar nooit iets naartoe gepubliceerd is
+# heeft dus geen stuurknop, en dat is de instelling: één node knoppen geven is
+# één keer iets publiceren, niet een vinkje op elk toestel.
+
+def normalize_button(raw):
+    """Eén knop uit de configuratie, of None als er niets bruikbaars in staat.
+
+    Streng zijn loont hier: dit komt van het netwerk, wordt op een scherm gezet
+    en gaat daarna weer het netwerk op. Een knop zonder doel of zonder tekst is
+    een knop die stilletjes niets doet, en die tonen we liever niet.
+    """
+    if not isinstance(raw, dict):
+        return None
+    target = str(raw.get("target") or "").strip().lower()
+    text = str(raw.get("text") or "").strip()
+    if not target or not text:
+        return None
+    label = str(raw.get("label") or "").strip() or titlecase(target)
+    button = {"target": target, "text": text[:TEXT_MAX],
+              "label": label[:LABEL_MAX]}
+    # Vorm, teken en kleur zijn alle drie optioneel en alle drie zonder
+    # betekenis voor deze app: hij tekent wat er staat.
+    for key in ("figure", "symbol", "initial", "color"):
+        value = raw.get(key)
+        if value:
+            button[key] = str(value).strip()
+    return button
+
+
+def parse_buttons(payload):
+    """(knoppen, titel) uit een payload, of wat er stond als hij stuk is.
+
+    Een lege retained payload is hoe MQTT "vergeet dit" zegt, en die wist de
+    knoppen. Een payload die geen JSON is, is iets anders: dan is er ergens een
+    fout gemaakt, en een werkend paneel weggooien om een verkeerde publicatie
+    helpt niemand.
+    """
+    if isinstance(payload, (bytes, bytearray)):
+        try:
+            payload = payload.decode("utf-8")
+        except Exception:
+            return [], DEFAULT_SEND_TITLE
+    text = (payload or "").strip()
+    if not text:
+        return [], DEFAULT_SEND_TITLE
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        print("messages: knoppen niet te lezen:", e)
+        return buttons, buttons_title
+    title = DEFAULT_SEND_TITLE
+    if isinstance(data, dict):
+        title = str(data.get("title") or DEFAULT_SEND_TITLE).strip() \
+            or DEFAULT_SEND_TITLE
+        data = data.get("buttons")
+    if not isinstance(data, (list, tuple)):
+        print("messages: knoppen zonder lijst")
+        return buttons, buttons_title
+    out = []
+    for raw in data:
+        button = normalize_button(raw)
+        if button is not None:
+            out.append(button)
+        if len(out) >= MAX_BUTTONS:
+            break
+    return out, title
+
+
+def set_buttons(payload, remember=True):
+    """Nieuwe knopconfiguratie toepassen. True als er iets veranderde."""
+    global buttons, buttons_title, buttons_seq
+    items, title = parse_buttons(payload)
+    if items == buttons and title == buttons_title:
+        return False
+    buttons = items
+    buttons_title = title
+    buttons_seq += 1
+    if remember:
+        remember_buttons(payload)
+    print("messages: %d knoppen" % len(buttons))
+    return True
+
+
+def remember_buttons(payload):
+    """Bewaren zodat de knoppen er meteen staan na een herstart.
+
+    De broker levert retained berichten opnieuw aan, dus strikt nodig is dit
+    niet. Wel prettig: anders is het scherm leeg tot de badge verbonden is, en
+    dat duurt op een koude start langer dan iemand geduld heeft.
+    """
+    if isinstance(payload, (bytes, bytearray)):
+        try:
+            payload = payload.decode("utf-8")
+        except Exception:
+            return False
+    text = (payload or "").strip()
+    if len(text) > BUTTONS_CACHE_MAX:
+        return False
+    try:
+        editor = SharedPreferences(PREFS_APP_ID).edit()
+        editor.put_string("buttons_json", text)
+        editor.commit()
+        return True
+    except Exception as e:
+        print("messages: kon de knoppen niet bewaren:", e)
+        return False
+
+
+def load_cached_buttons():
+    """Wat er de vorige keer stond, voor de broker antwoordt."""
+    try:
+        text = SharedPreferences(PREFS_APP_ID).get_string("buttons_json", "")
+    except Exception as e:
+        print("messages: kon de knoppen niet lezen:", e)
+        return False
+    if not text:
+        return False
+    return set_buttons(text, remember=False)
+
+
+def visible_buttons():
+    """De knoppen die deze badge mag tonen.
+
+    Een badge die naar zichzelf stuurt laat zichzelf piepen, en dat is nooit wat
+    iemand bedoelde. Hier gefilterd en niet bij het inlezen, want de naam van de
+    badge kan veranderen nadat de knoppen al binnen waren.
+    """
+    own = (CHILD_NAME or "").strip().lower()
+    return [b for b in buttons if b.get("target") != own]
+
+
+def publish_send(button):
+    """Een verzoek op het send-topic. False als het niet wegkwam.
+
+    Bewust niet vasthouden zoals een bevestiging dat wel doet. Een bevestiging
+    blijft waar tot ze aankomt; "eten binnen tien minuten" is over een half uur
+    geen bericht meer maar een leugen. Zeg dat het mislukt is en laat degene die
+    voor de badge staat opnieuw drukken.
+    """
+    global send_error
+    if not isinstance(button, dict):
+        send_error = "geen knop"
+        return False
+    target = str(button.get("target") or "").strip().lower()
+    text = str(button.get("text") or "").strip()
+    if not target or not text:
+        send_error = "knop is onvolledig"
+        return False
+    if target == (CHILD_NAME or "").strip().lower():
+        # Ook hier, niet alleen bij het tekenen: een naamswissel mag geen badge
+        # opleveren die zichzelf laat piepen.
+        send_error = "niet naar zichzelf"
+        return False
+    b = bridge()
+    if b is None:
+        send_error = bridge_missing_reason()
+        return False
+    payload = json.dumps({"target": target, "text": text, "from": CHILD_NAME})
+    if b.publish(SUFFIX_SEND, payload):
+        send_error = None
+        print("messages: verstuurd naar", target)
+        return True
+    send_error = "geen verbinding"
+    return False
+
+
 # --- LEDs ------------------------------------------------------------------
 # mpos.lights op deze firmware. Alles hier is best-effort: geen LEDs mag nooit
 # een bericht breken.
@@ -330,6 +526,7 @@ class MessagesService(Service):
                 print("messages: could not stop the previous service:", e)
         _service = self
         load_prefs()
+        load_cached_buttons()
         sync_bridge()
         print("messages: service created for", CHILD_NAME)
 
@@ -346,10 +543,11 @@ class MessagesService(Service):
         self._running = False
         b = bridge()
         if b is not None:
-            try:
-                b.unsubscribe(SUFFIX_MSG)
-            except Exception:
-                pass
+            for suffix in (SUFFIX_MSG, SUFFIX_BUTTONS):
+                try:
+                    b.unsubscribe(suffix)
+                except Exception:
+                    pass
         _leds_off()
 
     # --- hoofdlus ----------------------------------------------------------
@@ -374,6 +572,7 @@ class MessagesService(Service):
         # in staan, en het is wat een herstart van de brug repareert zonder dat
         # deze service iets hoeft te merken.
         b.subscribe(SUFFIX_MSG, self._on_message)
+        b.subscribe(SUFFIX_BUTTONS, self._on_buttons)
         if connected:
             self._flush_ack()
 
@@ -424,6 +623,13 @@ class MessagesService(Service):
             AppManager.start_app(APP_FULLNAME)
         except Exception as e:
             print("messages: start_app failed:", e)
+
+    def _on_buttons(self, topic, payload):
+        """De knopconfiguratie van Home Assistant, retained."""
+        try:
+            set_buttons(payload)
+        except Exception as e:
+            print("messages: knoppen niet verwerkt:", e)
 
     # --- uitgaand ----------------------------------------------------------
 
