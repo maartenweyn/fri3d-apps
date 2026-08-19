@@ -35,7 +35,7 @@ MAG_FIT  = 0.20;   // magnet pocket clearance (glue them in)
 DOCK_ANG = 65;     // angle of the badge relative to the desk
 BACK_SCREWS = false; // true = add four M2 from the back; false = snap fit only
 PORT_LABELS = false; // true = emboss AUDIO and LoRa into the front plate
-BACK_TEXT   = true;  // false = drop FRI3D 2026 from the back as well
+BACK_TEXT   = false; // true = emboss FRI3D 2026 into the back, 0.6 mm deep
 LORA_PORT   = false; // true = opening for the SMA antenna P3 of the LoRa kit.
                      // Careful: with P3 fitted it sticks out 9.5 mm past the board
                      // edge and the case will not close without that opening.

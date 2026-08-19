@@ -18,10 +18,10 @@ standoffs M1..M4 end. Measure your own stack and put that number in; the inner f
 wall and the dock all follow from it. Without the cover PCB fitted, -12.59 is enough and
 the case gets 6.6 mm thinner.
 
-No screws, no visible holes and no markings on the front. The front plate clips on and the
-back is fully closed. The only text is FRI3D 2026 on the back, 0.6 mm deep;
-`BACK_TEXT = false` removes that too. `PORT_LABELS = true` puts AUDIO and LoRa back into
-the plate if you change your mind.
+No screws, no visible holes and no lettering anywhere. The front plate clips on and the
+back is fully closed and blank. `BACK_TEXT = true` embosses FRI3D 2026 into the back,
+0.6 mm deep, and `PORT_LABELS = true` puts AUDIO and LoRa into the front plate. Both are
+off by default.
 
 ## The clip joint
 
@@ -207,8 +207,14 @@ pressure.
 
 `./build.sh` rebuilds the three STLs, both PDFs and all ten images in `images/`, and runs
 the three interference checks. It needs `openscad`, and `python3` with `shapely` and
-`cairosvg`. Run it after any change to the source, otherwise the pictures in this file
+`cairosvg`; add `trimesh` and the checks report a volume instead of just saying the file
+is not empty. Run it after any change to the source, otherwise the pictures in this file
 quietly start describing an older design.
+
+About that second check: `check2` intersects the back shell with the front plate and comes
+out non-empty but with zero volume. That is not an interference. The two parts touch along
+the seam and the boolean leaves coincident-surface slivers there. Only the volume matters,
+which is why the script measures it rather than looking at the file size.
 
 Everything comes from one file: `fri3d_badge_2026_case.scad`. Set `part` to `"backshell"`,
 `"frontplate"`, `"dock"`, `"assembly"`, `"docked"`, `"exploded"`, `"plated"` or
