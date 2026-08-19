@@ -91,7 +91,7 @@ minutes, most of it pasting YAML.
   It posts a notification, blinks the LEDs, wakes the screen if it had gone dark,
   and pulls the app to the front.
 - **It borrows the connection.** The MQTT link, the broker settings and the name
-  of the badge live in the [Badge app](#badge--beweynbadge), because they
+  of the badge live in the [Badge app](#badge--techweynbadgecontroller), because they
   describe the badge and not this app. One badge, one connection. If that app is
   not running the screen says `geen Badge-app` rather than `geen verbinding`:
   those call for different repairs.
@@ -525,11 +525,24 @@ PNG on your computer, doubled in size because 320 by 240 is small in a README.
     python3 tools/shot_to_png.py shot.b64 docs/images/thing.png
 
 The raw pixels are 153600 bytes, and base64 makes 204800 characters of that,
-which is not something you pull through a serial REPL. These screens are flat
-areas with some text on them, so runs of equal pixels compress them to a
-fraction: the clock is nearly all black and comes out a hundred times smaller.
-It would have been one line with `deflate`, but the module on this firmware only
+which is not something you pull through a serial REPL. Three things shrink it by
+a factor of thirty: a palette, because a settings screen rarely uses more than
+sixty colours even with antialiasing, so six bits replace two bytes; run lengths
+of one to three packed into that same byte, because antialiased text is mostly
+very short runs; and rows identical to the row above written as a single
+character, because a button forty pixels tall is forty times the same row. It
+would have been one line with `deflate`, but the module on this firmware only
 decompresses.
+
+Print the base64 in numbered lines of 96 and copy the numbers along. A wall of
+seven thousand characters with the same letter twenty times in a row is not
+something you transcribe reliably by hand, and a numbered line makes a dropped
+or doubled one visible immediately instead of at the md5 at the end. Check that
+md5 against the badge before making the PNG.
+
+    d = open("/tmp/shot.b64").read()
+    for i in range(0, len(d), 96):
+        print("%02d|%s" % (i // 96, d[i:i+96]))
 
 `all_layers=True` is not optional for these apps: the Badge app's clock lives in
 `lv.layer_top()` and is absent from the capture without it.
