@@ -1,89 +1,89 @@
 // ============================================================================
-//  Fri3d Camp 2026 badge - behuizing + magnetische bureaudock
+//  Fri3d Camp 2026 badge - case + magnetic desk dock
 //  ------------------------------------------------------------------------
-//  Geometrie gemeten uit Fri3D_Badge_2026_02.step (revisie 02),
+//  Geometry measured from Fri3D_Badge_2026_02.step (revision 02),
 //  github.com/Fri3dCamp/badge_2026_hw
 //
-//  Assenstelsel: oorsprong = midden PCB, Z = 0 op het bovenvlak van de PCB.
-//  Onderdelen met positieve Z zitten aan de gebruikerskant.
+//  Frame: origin = centre of the PCB, Z = 0 on the top face of the PCB.
+//  Anything with positive Z is on the user side.
 //
-//  Onderdelen:
-//    part = "backshell"   achterschaal met magneetnesten
-//    part = "frontplate"  frontplaat met schermrand
-//    part = "dock"        bureaudock, badge onder 65 graden
-//    part = "assembly"    alles samen met de badge erin (alleen om te kijken)
+//  Parts:
+//    part = "backshell"   back shell with the magnet pockets
+//    part = "frontplate"  front plate with the screen bezel
+//    part = "dock"        desk dock, badge at 65 degrees
+//    part = "assembly"    everything with the badge in it, to look at only
 //
-//  De rug en de voorkant zijn volledig gesloten. Geen schroeven: de frontplaat
-//  klikt vast op zes losse punten in de lange randen. Op de twee kopse kanten
-//  zit een wrikgleufje om hem er met een spudger weer af te halen.
+//  Back and front are fully closed. No screws: the front plate clips on at six
+//  separate points along the long edges. Each short end has a pry slot so a
+//  spudger gets it off again.
 //
-//  Print: Prusa MK4S, PLA, 0.4 mm nozzle, 0.2 mm laaghoogte, geen supports.
-//  Magneten: 8 x neodymium schijf 6 x 3 mm (4 in de schaal, 4 in de dock).
+//  Print: Prusa MK4S, PLA, 0.4 mm nozzle, 0.2 mm layers, no supports.
+//  Magnets: 8 x neodymium disc 6 x 3 mm (4 in the shell, 4 in the dock).
 // ============================================================================
 
 part = "assembly";
 $fn = 64;
 
 // ---------------------------------------------------------------- parameters
-FIT      = 0.30;   // speling rondom de PCB (FDM, 0.4 mm nozzle)
-WALL     = 2.40;   // wanddikte achterschaal
-FWALL    = 2.00;   // wanddikte frontplaat
-SKIN     = 0.80;   // materiaal tussen magneet en buitenvlak
-MAG_D    = 6.00;   // magneetdiameter
-MAG_H    = 3.00;   // magneetdikte
-MAG_FIT  = 0.20;   // speling magneetnest (lijmen met secondelijm)
-DOCK_ANG = 65;     // hoek van de badge t.o.v. het tafelblad
-BACK_SCREWS = false; // true = extra M2 vanaf de rug; false = alleen de snap-fit
-PORT_LABELS = false; // true = AUDIO en LoRa als opschrift in de frontplaat
-BACK_TEXT   = true;  // false = ook FRI3D 2026 uit de rug halen
-LORA_PORT   = false; // true = opening voor de SMA-antenne P3 van de LoRa-kit.
-                     // Let op: als P3 gemonteerd is steekt hij 9,5 mm voorbij de
-                     // printrand en gaat de behuizing niet dicht zonder die opening.
+FIT      = 0.30;   // clearance around the PCB (FDM, 0.4 mm nozzle)
+WALL     = 2.40;   // wall thickness, back shell
+FWALL    = 2.00;   // wall thickness, front plate
+SKIN     = 0.80;   // material between magnet and outer face
+MAG_D    = 6.00;   // magnet diameter
+MAG_H    = 3.00;   // magnet thickness
+MAG_FIT  = 0.20;   // magnet pocket clearance (glue them in)
+DOCK_ANG = 65;     // angle of the badge relative to the desk
+BACK_SCREWS = false; // true = add four M2 from the back; false = snap fit only
+PORT_LABELS = false; // true = emboss AUDIO and LoRa into the front plate
+BACK_TEXT   = true;  // false = drop FRI3D 2026 from the back as well
+LORA_PORT   = false; // true = opening for the SMA antenna P3 of the LoRa kit.
+                     // Careful: with P3 fitted it sticks out 9.5 mm past the board
+                     // edge and the case will not close without that opening.
 
-// ---- snap-fit tussen frontplaat en achterschaal ----------------------------
-Z_JOINT  = -5.20;  // onderkant van de tong, diep genoeg om te kunnen veren
-TONGUE   =  1.05;  // dikte van de tong
-GROOVE   =  1.10;  // breedte van de gleuf in de schaal (0.05 speling = lichte pers)
-BEAD     =  0.40;  // hoogte van de weerhaak
-Z_BEAD   = -3.00;  // bovenkant van de weerhaak, dit vlak houdt de plaat vast
-RAMP     =  1.60;  // aanlooplengte onder de weerhaak
+// ---- snap fit between front plate and back shell ---------------------------
+Z_JOINT  = -5.20;  // bottom of the tongue, deep enough to flex
+TONGUE   =  1.05;  // tongue thickness
+GROOVE   =  1.10;  // groove width in the shell (0.05 clearance = light press)
+BEAD     =  0.40;  // height of the barb
+Z_BEAD   = -3.00;  // top of the barb; this face is what holds the plate
+RAMP     =  1.60;  // lead-in length below the barb
 
-// Zes losse klikpunten in plaats van een doorlopende rand, zodat je de plaat
-// met iets plats weer los kan wrikken. [x, y, lengte, breedte van de zone]
+// Six separate clip points instead of a continuous rim, so the plate can be
+// pried off with something flat. [x, y, length, width of the zone]
 bead_spots = [[-25, 29.7, 14, 9], [  0, 29.7, 14, 9], [ 38, 29.7, 11, 9],
               [-50,-29.7, 12, 9], [  0,-29.7, 14, 9], [ 38,-29.7, 11, 9]];
-// Wrikgleufjes op de twee kopse kanten, over de naad heen.
+// Pry slots on the two short ends, across the seam.
 pry = [[-63.9, 0], [63.9, 0]];
 
-// hoogtes uit de STEP
-PCB_T     = 1.59;  // PCB dikte
-Z_BAT     = -12.59; // onderkant batterij
+// heights from the STEP
+PCB_T     = 1.59;  // PCB thickness
+Z_BAT     = -12.59; // bottom of the battery
 
-// ---- diepte van de badge onder de print -----------------------------------
-// Dit is het enige getal dat je moet aanpassen na het opmeten. Het is het laagste
-// punt van alles wat aan de print hangt: batterij, standoffs, cover-PCB, schroeven.
-// -19.19 komt uit de STEP en is de onderkant van de standoffs M1..M4.
-// Zit de cover-PCB er niet op, dan is -12.59 (onderkant batterij) genoeg en wordt
-// de behuizing 6,6 mm dunner.
+// ---- how deep the badge reaches below the board ----------------------------
+// This is the one number to change after measuring. It is the lowest point of
+// everything hanging under the board: battery, standoffs, cover PCB, screws.
+// -19.19 comes from the STEP and is where the standoffs M1..M4 end.
+// Without the cover PCB, -12.59 (bottom of the battery) is enough and the case
+// gets 6.6 mm thinner.
 BADGE_BOTTOM = -19.19;
 
-// Wat er aan de bovenkant uit de montagegaten steekt. Uit de STEP: 3,31 mm, diameter
-// 6,2 mm. De frontplaat maakt daar plaatselijk ruimte voor.
+// What sticks out of the mounting holes on the top side. From the STEP: 3.31 mm,
+// diameter 6.2 mm. The front plate makes local room for it.
 STUD_TOP = 3.31;
 STUD_D   = 6.20;
-Z_DISP    = 4.50;  // bovenkant displayglas
-Z_BTN     = 5.00;  // bovenkant drukknoppen
-Z_JOY     = 7.00;  // bovenkant joystickknop
+Z_DISP    = 4.50;  // top of the display glass
+Z_BTN     = 5.00;  // top of the push buttons
+Z_JOY     = 7.00;  // top of the joystick cap
 
-FLOOR_Z   = BADGE_BOTTOM - 1.00;   // binnenvloer achterschaal
-BACK_Z    = FLOOR_Z - WALL;        // buitenvlak rug          = -15.99
-RIM_Z     = 0.90;                  // bovenkant rand achterschaal
-DECK_Z0   = 1.80;                  // onderkant hoofddek frontplaat
-DECK_Z1   = DECK_Z0 + FWALL;       // bovenkant hoofddek      = 3.80
-BEZ_Z0    = Z_DISP + 0.40;         // onderkant schermrand    = 4.90
-BEZ_Z1    = BEZ_Z0 + 1.60;         // bovenkant schermrand    = 6.50
+FLOOR_Z   = BADGE_BOTTOM - 1.00;   // inner floor of the back shell
+BACK_Z    = FLOOR_Z - WALL;        // outer face of the back
+RIM_Z     = 0.90;                  // top of the back shell rim
+DECK_Z0   = 1.80;                  // underside of the main deck
+DECK_Z1   = DECK_Z0 + FWALL;       // top of the main deck
+BEZ_Z0    = Z_DISP + 0.40;         // underside of the screen bezel
+BEZ_Z1    = BEZ_Z0 + 1.60;         // top of the screen bezel
 
-// ------------------------------------------------------- PCB omtrek uit STEP
+// -------------------------------------------------------- PCB outline, STEP
 outline = [[-55.5,27],[55.5,27],[56.2803,26.9229],[57.0305,26.6951],[57.7219,26.3254],
 [58.328,25.828],[58.8254,25.2219],[59.1951,24.5305],[59.4229,23.7803],[59.5,23],
 [59.5,-25],[59.4317,-25.5176],[59.2318,-25.9998],[58.914,-26.414],[58.4998,-26.7318],
@@ -93,27 +93,27 @@ outline = [[-55.5,27],[55.5,27],[56.2803,26.9229],[57.0305,26.6951],[57.7219,26.
 [-57.7219,26.3254],[-57.0305,26.6951],[-56.2803,26.9229]];
 
 module pcb_2d(off=0) offset(delta=off) polygon(outline);
-module cavity_2d() pcb_2d(FIT);                 // binnenkant: PCB + speling
+module cavity_2d() pcb_2d(FIT);                 // inside: PCB + clearance
 module outer_2d() offset(r=1.6) pcb_2d(FIT + WALL - 1.6);
 
-// ------------------------------------------------------------- posities
-// montagegaten diameter 2.5 mm, al aanwezig in de PCB
+// ------------------------------------------------------------- positions
+// mounting holes, 2.5 mm diameter, already in the PCB
 mounts = [[-37.5,-17.5],[-32.5,23.5],[37.5,18.5],[37.5,-17.5]];
-// drukknoppen 6 mm
+// 6 mm push buttons
 btns   = [[-13.5,-22.5],[13.5,-22.5],[45.75,-11.25],[54.75,-1],[45.75,9.25],[36.25,-1]];
-// magneten
+// magnets
 mags   = [[-47,18],[47,18],[-47,-18],[47,-18]];
-// 5 x WS2812B, body 5.4 x 5.0 mm, hart op y = -16.2
+// 5 x WS2812B, body 5.4 x 5.0 mm, centred on y = -16.2
 leds   = [-20, -10, 0, 10, 20];
-LED_D  = 4.40;   // diameter van het gaatje per LED
+LED_D  = 4.40;   // diameter of the hole per LED
 
-// Rond de montagegaten van de PCB steekt hardware uit: aan de onderkant een spacer,
-// aan de bovenkant eventueel een schroefkop. De draagkolommen zijn daarom ringen.
-COL_D    = 8.00;   // buitendiameter van de kolommen
-SPACER_D = 5.20;   // vrije ruimte voor de spacer / moer / schroefkop
-SPACER_H = 4.00;   // hoe diep die uitsparing gaat aan de onderkant
+// Hardware sticks out around the mounting holes: a spacer below, possibly a
+// screw head above. The columns are therefore rings.
+COL_D    = 8.00;   // outer diameter of the columns
+SPACER_D = 5.20;   // clear space for the spacer, nut or screw head
+SPACER_H = 4.00;   // how deep that recess goes on the underside
 
-// ============================================================== ACHTERSCHAAL
+// ================================================================ BACK SHELL
 module magnet_pocket() {
     translate([0,0,BACK_Z + SKIN])
         cylinder(h = MAG_H + MAG_FIT, d = MAG_D + MAG_FIT);
@@ -122,33 +122,34 @@ module magnet_pocket() {
 module backshell() {
     difference() {
         union() {
-            // schaal met de holte er al uit, anders halen de volgende
-            // aftrekkingen de kolommen en de magneetverdikkingen mee weg
+            // shell with the cavity already carved out, otherwise the later
+            // subtractions take the columns and magnet bosses with them
             difference() {
                 translate([0,0,BACK_Z]) linear_extrude(RIM_Z - BACK_Z) outer_2d();
-                // binnenholte
+                // inner cavity
                 translate([0,0,FLOOR_Z]) linear_extrude(RIM_Z - FLOOR_Z + 1) cavity_2d();
-                // gleuf voor de tong van de frontplaat
+                // groove for the tongue of the front plate
                 translate([0,0,Z_JOINT]) linear_extrude(RIM_Z - Z_JOINT + 1)
                     offset(delta = GROOVE) cavity_2d();
-                // groeven waar de zes weerhaken in terugveren
+                // grooves the six barbs spring back into
                 translate([0,0,Z_BEAD - RAMP - 0.10]) linear_extrude(RAMP + 0.20)
                     intersection() {
                         offset(delta = GROOVE + BEAD + 0.15) cavity_2d();
                         bead_zone(3.0);
                     }
             }
-            // Geen draagkolommen: de cover-PCB op de standoffs draagt de print al.
-            // Alleen de verdikking rond de magneetnesten, binnen de holte gesneden.
+            // No support columns: the cover PCB on the standoffs already carries
+            // the board. Only the bosses around the magnet pockets, clipped to
+            // the cavity.
             intersection() {
                 for (p = mags) translate([p[0],p[1],FLOOR_Z])
                     cylinder(h = 2.0, d = 11.0);
                 translate([0,0,FLOOR_Z - 1]) linear_extrude(30) cavity_2d();
             }
         }
-        // magneetnesten, blind vanaf de binnenkant
+        // magnet pockets, blind from the inside
         for (p = mags) translate([p[0],p[1],0]) magnet_pocket();
-        // schroeven, alleen als BACK_SCREWS aan staat
+        // screws, only when BACK_SCREWS is on
         if (BACK_SCREWS) for (p = mounts) {
             translate([p[0],p[1],BACK_Z - 1]) cylinder(h = 40, d = 2.45);
             translate([p[0],p[1],BACK_Z - 0.01]) cylinder(h = 2.80, d = 4.20);
@@ -159,23 +160,23 @@ module backshell() {
     }
 }
 
-// openingen in de randen (maten uit de STEP + 0.6 mm speling)
+// openings in the edges (sizes from the STEP + 0.6 mm clearance)
 module edge_ports() {
-    // bovenrand
+    // top edge
     translate([22.20, 20.0, -5.70]) cube([10.60, 14.0, 6.10]);   // USB-C
     translate([-44.35, 13.5, -7.40]) cube([8.10, 20.0, 6.90]);   // TRRS jack
     if (LORA_PORT)
-        translate([43.90, 21.5, -6.10]) cube([9.40, 18.0, 8.20]);  // LoRa antenne
-    // onderrand
+        translate([43.90, 21.5, -6.10]) cube([9.40, 18.0, 8.20]);  // LoRa antenna
+    // bottom edge
     translate([14.90, -34.0, -4.30]) cube([13.30, 14.0, 4.10]);  // microSD
-    // aan/uit schuifschakelaar SW4 (WS-SLSU 1P2T). De schuif steekt maar 0,88 mm
-    // voorbij de printrand, dus hij blijft 1,8 mm verzonken liggen.
+    // power slide switch SW4 (WS-SLSU 1P2T). The slider only reaches 0.88 mm
+    // past the board edge, so it sits 1.8 mm recessed.
     translate([-34.50, -34.0, -4.20]) cube([10.50, 14.0, 3.70]);
-    // trechter in de buitenwand zodat je er met een nagel bij kan
+    // funnel in the outer wall so a fingernail can reach the slider
     translate([-37.00, -30.40, -5.40]) cube([15.50, 2.00, 6.10]);
 }
 
-// de rug is volledig dicht; alleen een opschrift, 0.6 mm diep
+// the back is fully closed; only a marking, 0.6 mm deep
 module floor_ports() {
     if (BACK_TEXT)
     translate([0, -21.5, BACK_Z - 0.01]) mirror([1,0,0]) linear_extrude(0.62)
@@ -183,7 +184,7 @@ module floor_ports() {
              font="Liberation Sans:style=Bold", spacing=1.1);
 }
 
-// ---- tong met weerhaak -----------------------------------------------------
+// ---- tongue with barbs -----------------------------------------------------
 module tongue_ring(extra = 0)
     difference() { offset(delta = TONGUE + extra) cavity_2d(); cavity_2d(); }
 
@@ -191,15 +192,15 @@ module bead_zone(margin = 0)
     for (s = bead_spots)
         translate([s[0], s[1]]) square([s[2] + 2*margin, s[3] + 2*margin], center = true);
 
-// wrikgleufjes, over de naad heen, uit beide delen gehaald
+// pry slots, across the seam, subtracted from both parts
 module pry_notches()
     for (p = pry) translate([p[0], p[1], RIM_Z]) cube([4.6, 16.0, 3.2], center = true);
 
 module tongue() {
-    // rechte tong, rondom
+    // plain tongue, all the way round
     translate([0,0,Z_JOINT]) linear_extrude(DECK_Z0 - Z_JOINT) tongue_ring();
-    // zes weerhaken, opgebouwd in laagjes van 0.2 mm: dun onderaan als aanloop,
-    // vol bovenaan. Het vlakke bovenvlak is wat de plaat vasthoudt.
+    // six barbs, built in 0.2 mm slices: thin at the bottom as a lead-in, full
+    // at the top. That flat top face is what holds the plate.
     steps = round(RAMP / 0.20);
     for (i = [1 : steps])
         translate([0, 0, Z_BEAD - RAMP + (i-1)*0.20])
@@ -209,50 +210,50 @@ module tongue() {
             }
 }
 
-// ================================================================ FRONTPLAAT
+// ================================================================ FRONT PLATE
 module frontplate() {
     difference() {
         union() {
-            // hoofddek
+            // main deck
             translate([0,0,DECK_Z0]) linear_extrude(FWALL) outer_2d();
-            // buitenwand tot op de achterschaal
+            // outer wall down onto the back shell
             translate([0,0,RIM_Z]) linear_extrude(DECK_Z0 - RIM_Z + 0.10)
                 difference() { outer_2d(); offset(delta = 1.10) cavity_2d(); }
-            // tong met weerhaak die in de achterschaal klikt
+            // tongue with barbs that clips into the back shell
             tongue();
-            // verhoogde schermrand
+            // raised screen bezel
             translate([0,0,DECK_Z1 - 0.10])
                 linear_extrude(BEZ_Z1 - DECK_Z1 + 0.10) bezel_2d();
-            // Plaatselijke verdikking boven elk montagegat. De standoff steekt daar
-            // 3,31 mm uit; het dek is maar 1,8 mm hoog, dus het dek gaat er lokaal
-            // 0,9 mm omhoog zodat er nog 1,1 mm materiaal boven de uitsparing zit.
+            // Local boss above each mounting hole. The standoff sticks out 3.31 mm
+            // there and the deck is only 1.8 mm up, so the deck rises 0.9 mm
+            // locally, leaving 1.1 mm of material above the recess.
             for (p = mounts) translate([p[0],p[1],DECK_Z1 - 0.10])
                 cylinder(h = 1.00, d1 = 10.0, d2 = 8.6);
         }
-        // uitsparing voor het displaymodule zelf
+        // clearance for the display module itself
         translate([-28.90, -13.90, DECK_Z0 - 0.10])
             cube([57.80, 44.00, BEZ_Z0 - DECK_Z0 + 0.10]);
-        // schermvenster
+        // screen window
         translate([-26.9, -11.8, -1]) linear_extrude(40)
             offset(r=1.5) offset(delta=-1.5) square([53.8, 37.2]);
         // joystick
         translate([-42.78, -0.15, -1]) linear_extrude(40)
             offset(r=2.5) square([16.0, 16.0], center=true);
-        // drukknoppen
+        // push buttons
         for (p = btns) translate([p[0],p[1],-1]) cylinder(h=40, d=7.4);
-        // een gaatje per LED in plaats van een doorlopende sleuf
+        // one hole per LED instead of a continuous slot
         for (x = leds) translate([x, -16.2, -1]) cylinder(h = 40, d = LED_D);
-        // status-LED D15
+        // status LED D15
         translate([-33.27, 17.1, -1]) cylinder(h=40, d=7.4);
-        // uitsparing voor de standoff die boven de print uitsteekt
+        // recess for the standoff that sticks out above the board
         for (p = mounts) translate([p[0],p[1],-0.10])
             cylinder(h = STUD_TOP + 0.30 + 0.10, d = STUD_D + 0.80);
-        // blinde voorboring, alleen als je toch schroeven wil
+        // blind pilot hole, only if you do want screws
         if (BACK_SCREWS) for (p = mounts) translate([p[0],p[1],-0.10])
             cylinder(h = DECK_Z1 - 0.20 + 0.10, d = 1.60);
-        // wrikgleufjes op de kopse kanten om de plaat er weer af te krijgen
+        // pry slots on the short ends to get the plate off again
         pry_notches();
-        // opschriften in de plaat, 0.5 mm diep, standaard uit
+        // markings in the plate, 0.5 mm deep, off by default
         if (PORT_LABELS) {
             translate([-44.0, 23.5, DECK_Z1 - 0.50]) linear_extrude(0.61)
                 text("AUDIO", size=2.9, halign="center", valign="center",
@@ -262,12 +263,12 @@ module frontplate() {
                     text("LoRa", size=2.9, halign="center", valign="center",
                          font="Liberation Sans:style=Bold", spacing=1.15);
         }
-        // randopeningen ook in de frontplaat
+        // edge openings in the front plate too
         edge_ports();
     }
 }
 
-// vlak van de verhoogde schermrand: rond het display, doorlopend tot de bovenrand
+// footprint of the raised bezel: around the display, running to the top edge
 module bezel_2d() {
     intersection() {
         outer_2d();
@@ -277,48 +278,48 @@ module bezel_2d() {
 }
 
 // ====================================================================== DOCK
-// De badge klikt magnetisch in een ondiepe bak die 41 graden achterover staat.
+// The badge clips magnetically into a shallow tray leaning back.
 module dock() {
     FOOT_Y0 = -44; FOOT_W = 134;
-    TRAY   = 4.0;   // dikte achterplaat van de bak
-    RIM    = 5.0;   // hoogte opstaande rand
+    TRAY   = 4.0;   // thickness of the tray back plate
+    RIM    = 5.0;   // height of the standing rim
     difference() {
         union() {
-            // wig: romp tussen de voet en de achterplaat van de bak
+            // wedge: body between the foot and the tray back plate
             hull() {
                 translate([-FOOT_W/2, FOOT_Y0, 0]) cube([FOOT_W, 9, 3]);
                 dock_place() translate([0,0,BACK_Z-TRAY])
                     linear_extrude(TRAY) offset(delta=3.2) outer_2d();
             }
-            // opstaande rand rond de badge, bovenrand blijft vrij
+            // rim around the badge; the top edge stays open
             dock_place() translate([0,0,BACK_Z]) linear_extrude(RIM)
                 intersection() {
                     difference() { offset(delta=3.2) outer_2d(); offset(delta=0.45) outer_2d(); }
                     translate([-70,-40]) square([140, 58]);
                 }
         }
-        // holte voor de badge
+        // pocket for the badge
         dock_place() translate([0,0,BACK_Z-0.01]) linear_extrude(80)
             offset(delta=0.45) outer_2d();
-        // magneetnesten in de bak, open naar de badge toe
+        // magnet pockets in the tray, open towards the badge
         dock_place() for (p = mags) translate([p[0],p[1],BACK_Z-MAG_H-MAG_FIT-0.10])
             cylinder(h = MAG_H + MAG_FIT + 0.20, d = MAG_D + MAG_FIT);
-        // uitsparing in de onderrand voor de microSD
+        // notch in the bottom rim for the microSD
         dock_place() translate([13.4,-40,BACK_Z-1]) cube([16.4, 16, RIM+2]);
-        // materiaal besparen aan de onderkant
+        // save material underneath
         translate([-FOOT_W/2+6, FOOT_Y0+6, -1]) hull() {
             cube([FOOT_W-12, 6, 1]);
             dock_place() translate([0,0,BACK_Z-TRAY-6]) linear_extrude(1)
                 offset(delta=-4) outer_2d();
         }
-        // vlakke onderkant
+        // flat bottom
         translate([-200,-200,-40]) cube([400,400,40]);
     }
 }
 
 module dock_place() translate([0, -14, 36]) rotate([DOCK_ANG, 0, 0]) children();
 
-// =========================================================== badge (referentie)
+// ============================================================ badge (reference)
 module badge() {
     color("#3b1f6e") translate([0,0,-PCB_T]) linear_extrude(PCB_T) pcb_2d();
     color("#101018") translate([-28.1,-13,3]) cube([56.2,39.6,1.5]);
@@ -343,7 +344,7 @@ module magnets(inshell=true) {
         translate([p[0],p[1], BACK_Z + SKIN]) cylinder(h=MAG_H, d=MAG_D);
 }
 
-// ================================================================= uitvoeren
+// =================================================================== render
 if (part == "backshell")  backshell();
 if (part == "frontplate") frontplate();
 if (part == "dock")       dock();
@@ -358,7 +359,7 @@ if (part == "docked") {
     dock_place() { color("#4a5bd0",0.92) backshell(); color("#8f9bef",0.6) frontplate(); badge(); }
 }
 
-// ---------------------------------------------- botsingscontrole (verificatie)
+// ------------------------------------------------ interference check (verify)
 if (part == "check")
     intersection() { union() { backshell(); frontplate(); } badge_solids(); }
 
@@ -368,27 +369,27 @@ module badge_solids() {
     translate([-42.78,-0.15,0]) { cube([18,18,3.5],center=true); cylinder(h=7,r=4.2); }
     for (p = btns) translate([p[0],p[1],0]) cylinder(h=5,r=3);
     for (x = leds) translate([x-2.7,-18.7,0]) cube([5.4,5.0,1.6]);
-    translate([-26.1,-15.8,-12.59]) cube([60,40,7]);                 // batterij
+    translate([-26.1,-15.8,-12.59]) cube([60,40,7]);                 // battery
     translate([-9,1,-4.79]) cube([18,25.5,3.2]);                     // ESP32
     translate([23,20.45,-4.85]) cube([8.94,7.9,4.21]);               // USB-C
     translate([-43.55,14.5,-6.59]) cube([6.5,14,5]);                 // TRRS
-    // De SMA-connector P3 steekt 9,5 mm voorbij de printrand. Alleen meenemen als
-    // de opening open staat; anders is de aanname dat P3 niet gemonteerd is.
+    // The SMA connector P3 sticks out 9.5 mm past the board edge. Only include it
+    // when the opening is open; otherwise the assumption is P3 is not fitted.
     if (LORA_PORT) translate([44.84,23.17,-5.27]) cube([7.32,13.33,6.35]);
     translate([12.43,-24.35,-3.54]) cube([16,15.25,2.45]);           // microSD
-    translate([15.69,-29.65,-3.53]) cube([11.42,15,1.06]);           // SD kaart
+    translate([15.69,-29.65,-3.53]) cube([11.42,15,1.06]);           // SD card
     translate([-7.62,-25.1,-5.29]) cube([15.24,7.2,3.7]);            // P10
-    translate([44.99,-8.46,-5.39]) cube([5.1,4.5,3.8]);              // SW11 reset
-    translate([-33.35,-26.35,-3.01]) cube([6.70,2.70,1.90]);        // SW4 aan/uit
-    translate([-32.71,-27.88,-2.81]) cube([6.92,3.85,1.10]);        // SW4 schuif + 1.5 mm slag
+    translate([44.99,-8.46,-5.39]) cube([5.1,4.5,3.8]);              // SW11, reset
+    translate([-33.35,-26.35,-3.01]) cube([6.70,2.70,1.90]);        // SW4, power
+    translate([-32.71,-27.88,-2.81]) cube([6.92,3.85,1.10]);        // SW4 slider + 1.5 mm travel
     translate([-58.60,9.00,-4.54]) cube([4.25,6.00,2.90]);          // P2
-    // standoffs M1..M4 met de cover-PCB eronder, uit de STEP: diameter 6,2 mm
-    // van z = -19,19 tot +3,31
+    // standoffs M1..M4 with the cover PCB below, from the STEP: 6.2 mm diameter,
+    // z = -19.19 to +3.31
     for (p = mounts) translate([p[0],p[1],BADGE_BOTTOM])
         cylinder(h = STUD_TOP - BADGE_BOTTOM, d = STUD_D);
     translate([-6,-16.2,-4.64]) cube([12,12,3.05]);                  // buzzer
     translate([44.94,3.05,-4.54]) cube([11.6,11,2.95]);              // LoRa module
-    translate([-30.98,-5.65,-5.29]) cube([6,6.5,3.76]);              // batterijconnector
+    translate([-30.98,-5.65,-5.29]) cube([6,6.5,3.76]);              // battery connector
     translate([-35.77,15,0]) cube([5,4.2,4.4]);                      // D15
     translate([20.89,-0.06,-2.48]) cube([4.2,7.9,0.9]);              // FPC connector
 }
@@ -403,13 +404,13 @@ if (part == "exploded") {
     magnets();
 }
 if (part == "plated") {
-    // zoals ze op de printplaat liggen
+    // laid out as they sit on the bed
     translate([0,70,0]) rotate([180,0,0]) color("#8f9bef") frontplate();
     color("#4a5bd0") backshell();
     translate([0,-95,0]) rotate([-DOCK_ANG,0,0]) color("#b96ad9") dock();
 }
 
-// dwarsdoorsnede door de snap-fit, om te controleren
+// cross section through the snap fit, to check it
 if (part == "section")
     difference() {
         union() { color("#4a5bd0") backshell(); color("#8f9bef") frontplate(); }

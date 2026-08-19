@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="297.0mm" height="210.0mm" viewBox="0 0 297.0 210.0">
+<rect width="297.0" height="210.0" fill="#ffffff"/>
+<text x="18.00" y="15.00" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="6.2" letter-spacing="0" fill="#1c1c1a">Fri3d badge 2026 - every opening in the case</text>
+<text x="18.00" y="22.00" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="3.4" letter-spacing="0" fill="#6b6b64">Four of them, all in the long edges. The short ends are closed, and so are the back and the front. The LoRa antenna is left closed.</text>
+<polygon points="78.79,33.89 78.96,33.88 79.12,33.88 217.88,33.88 218.04,33.88 218.21,33.89 219.18,33.99 219.35,34.01 219.51,34.04 219.67,34.07 219.83,34.12 220.77,34.40 220.93,34.45 221.08,34.51 221.23,34.58 221.38,34.65 222.24,35.12 222.39,35.20 222.53,35.29 222.66,35.38 222.79,35.48 223.55,36.11 223.68,36.21 223.80,36.33 223.91,36.45 224.02,36.57 224.64,37.33 224.74,37.46 224.84,37.60 224.93,37.74 225.01,37.88 225.47,38.75 225.54,38.89 225.61,39.04 225.67,39.20 225.72,39.36 226.01,40.29 226.05,40.45 226.09,40.62 226.12,40.78 226.14,40.94 226.23,41.92 226.25,42.08 226.25,42.25 226.25,102.25 226.25,102.40 226.24,102.54 226.22,102.69 226.14,103.34 226.11,103.51 226.07,103.69 226.03,103.86 225.97,104.02 225.91,104.19 225.66,104.79 225.59,104.95 225.51,105.11 225.42,105.26 225.32,105.41 225.22,105.55 224.82,106.07 224.71,106.21 224.59,106.34 224.47,106.47 224.33,106.58 224.20,106.70 223.68,107.09 223.54,107.20 223.39,107.29 223.24,107.38 223.08,107.46 222.92,107.53 222.31,107.78 222.15,107.85 221.98,107.90 221.81,107.95 221.64,107.98 221.46,108.01 220.82,108.10 220.67,108.11 220.52,108.12 220.38,108.12 76.62,108.12 76.48,108.12 76.33,108.11 76.18,108.10 75.54,108.01 75.36,107.98 75.19,107.95 75.02,107.90 74.85,107.85 74.69,107.78 74.08,107.53 73.92,107.46 73.76,107.38 73.61,107.29 73.46,107.20 73.32,107.09 72.80,106.70 72.67,106.58 72.53,106.47 72.41,106.34 72.29,106.21 72.18,106.07 71.78,105.55 71.68,105.41 71.58,105.26 71.49,105.11 71.41,104.95 71.34,104.79 71.09,104.19 71.03,104.02 70.97,103.86 70.93,103.69 70.89,103.51 70.86,103.34 70.78,102.69 70.76,102.54 70.75,102.40 70.75,102.25 70.75,42.25 70.75,42.08 70.77,41.92 70.86,40.94 70.88,40.78 70.91,40.62 70.95,40.45 70.99,40.29 71.28,39.36 71.33,39.20 71.39,39.04 71.46,38.89 71.53,38.75 71.99,37.88 72.07,37.74 72.16,37.60 72.26,37.46 72.36,37.33 72.98,36.57 73.09,36.45 73.20,36.33 73.32,36.21 73.45,36.11 74.21,35.48 74.34,35.38 74.47,35.29 74.61,35.20 74.76,35.12 75.62,34.65 75.77,34.58 75.92,34.51 76.07,34.45 76.23,34.40 77.17,34.12 77.33,34.07 77.49,34.04 77.65,34.01 77.82,33.99 78.79,33.89" fill="#f0efe9" stroke="#3c3c38" stroke-width="0.5"/>
+<text x="70.75" y="72.20" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="3.2" letter-spacing="0" fill="#a8a49a">plan</text>
+<rect x="93.06" y="32.38" width="10.13" height="3.0" fill="#c9312a"/>
+<path d="M 98.12,33.88 L 98.12,26.88" stroke="#c9312a" stroke-width="0.3"/>
+<text x="98.12" y="25.27" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.4" letter-spacing="0" fill="#c9312a">Audio, 3.5 mm TRRS</text>
+<rect x="176.25" y="32.38" width="13.25" height="3.0" fill="#c9312a"/>
+<path d="M 182.88,33.88 L 182.88,26.88" stroke="#c9312a" stroke-width="0.3"/>
+<text x="182.88" y="25.27" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.4" letter-spacing="0" fill="#c9312a">USB-C</text>
+<rect x="167.12" y="106.62" width="16.62" height="3.0" fill="#c9312a"/>
+<path d="M 175.44,108.12 L 175.44,115.12" stroke="#c9312a" stroke-width="0.3"/>
+<text x="175.44" y="119.33" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.4" letter-spacing="0" fill="#c9312a">microSD</text>
+<rect x="105.38" y="106.62" width="13.12" height="3.0" fill="#c9312a"/>
+<path d="M 111.94,108.12 L 111.94,115.12" stroke="#c9312a" stroke-width="0.3"/>
+<text x="111.94" y="119.33" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.4" letter-spacing="0" fill="#c9312a">Power, SW4</text>
+<rect x="70.75" y="132.26" width="155.50" height="24.74" fill="#f0efe9" stroke="#3c3c38" stroke-width="0.5"/>
+<path d="M 70.75,135.89 L 226.25,135.89" stroke="#a8a49a" stroke-width="0.3" stroke-dasharray="2,1.5"/>
+<text x="70.75" y="129.66" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="600" font-size="3.4" letter-spacing="0" fill="#6b6b64">top edge, seen from outside</text>
+<text x="72.75" y="134.59" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.6" letter-spacing="0" fill="#a8a49a">seam, front plate / back shell</text>
+<rect x="93.06" y="137.64" width="10.13" height="8.62" fill="#c9312a"/>
+<text x="98.12" y="150.26" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.0" letter-spacing="0" fill="#c9312a">Audio, 3.5 mm TRRS</text>
+<text x="98.12" y="154.26" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.7" letter-spacing="0" fill="#6b6b64">8.1 x 6.9 mm</text>
+<rect x="176.25" y="136.51" width="13.25" height="7.63" fill="#c9312a"/>
+<text x="182.88" y="148.14" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.0" letter-spacing="0" fill="#c9312a">USB-C</text>
+<text x="182.88" y="152.14" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.7" letter-spacing="0" fill="#6b6b64">10.6 x 6.1 mm</text>
+<rect x="70.75" y="175.26" width="155.50" height="24.74" fill="#f0efe9" stroke="#3c3c38" stroke-width="0.5"/>
+<path d="M 70.75,178.89 L 226.25,178.89" stroke="#a8a49a" stroke-width="0.3" stroke-dasharray="2,1.5"/>
+<text x="70.75" y="172.66" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="600" font-size="3.4" letter-spacing="0" fill="#6b6b64">bottom edge, seen from outside</text>
+<text x="72.75" y="177.59" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.6" letter-spacing="0" fill="#a8a49a">seam, front plate / back shell</text>
+<rect x="167.12" y="180.26" width="16.62" height="5.12" fill="#c9312a"/>
+<text x="175.44" y="189.39" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.0" letter-spacing="0" fill="#c9312a">microSD</text>
+<text x="175.44" y="193.39" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.7" letter-spacing="0" fill="#6b6b64">13.3 x 4.1 mm</text>
+<rect x="105.38" y="180.64" width="13.12" height="4.62" fill="#c9312a"/>
+<text x="111.94" y="189.26" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="700" font-size="3.0" letter-spacing="0" fill="#c9312a">Power, SW4</text>
+<text x="111.94" y="193.26" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.7" letter-spacing="0" fill="#6b6b64">10.5 x 3.7 mm</text>
+<text x="18.00" y="204.00" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-weight="400" font-size="2.8" letter-spacing="0" fill="#a8a49a">Generated from fri3d_badge_2026_case.scad, module edge_ports(). Measured from the centre of the PCB, z = 0 on the top face of the board. Exact coordinates are in README.md.</text>
+</svg>
