@@ -190,6 +190,10 @@ and none of them are about messages. They describe the badge.
   on a settings screen: the clock may appear quickly and the screen may then stay
   on for a good while, which are two very different durations, and one setting for
   both would force a bad choice. A fifth row does not fit.
+
+<img src="docs/images/badge-scherm-en-lichtjes.png" alt="Screen and lights: after inactivity clock, wait 30 s, debug LED off, and a row leading to night and brightness" width="360">
+<img src="docs/images/badge-nacht-en-helderheid.png" alt="Night and brightness: clock by day 30%, night from 21:00, night until 07:00, clock at night 5%, each with a minus and a plus button" width="360">
+
 - **One press of S in the dark, or one touch.** Either brings the clock back for
   ten seconds; a second press or touch returns you to the app underneath. Waking
   a dark badge at three in the morning should show you the time, not an app at
