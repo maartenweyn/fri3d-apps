@@ -159,7 +159,7 @@ page. `pdf/cover_sticker.svg` is the same file for a cutting plotter.
 
 | Part | Material | Orientation | Supports |
 |---|---|---|---|
-| `stl/01_back_shell.stl` | 29.4 cm3, about 36 g | back on the bed | no |
+| `stl/01_back_shell.stl` | 32.9 cm3, about 41 g | back on the bed | no |
 | `stl/02_front_plate.stl` | 12.0 cm3, about 15 g | top face on the bed | no |
 | `stl/03_dock.stl` | 60.8 cm3, about 75 g | flat, tray upwards | no |
 
@@ -205,8 +205,10 @@ pressure.
 
 ## Building it again
 
-`./build.sh` rebuilds the three STLs and both PDFs and runs the three interference checks.
-It needs `openscad`, and `python3` with `shapely` and `cairosvg`.
+`./build.sh` rebuilds the three STLs, both PDFs and all ten images in `images/`, and runs
+the three interference checks. It needs `openscad`, and `python3` with `shapely` and
+`cairosvg`. Run it after any change to the source, otherwise the pictures in this file
+quietly start describing an older design.
 
 Everything comes from one file: `fri3d_badge_2026_case.scad`. Set `part` to `"backshell"`,
 `"frontplate"`, `"dock"`, `"assembly"`, `"docked"`, `"exploded"`, `"plated"` or
