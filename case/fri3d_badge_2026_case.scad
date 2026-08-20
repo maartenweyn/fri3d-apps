@@ -60,17 +60,21 @@ PCB_T     = 1.59;  // PCB thickness
 Z_BAT     = -12.59; // bottom of the battery
 
 // ---- how deep the badge reaches below the board ----------------------------
-// This is the one number to change after measuring. It is the lowest point of
-// everything hanging under the board: battery, standoffs, cover PCB, screws.
-// -19.19 comes from the STEP and is where the standoffs M1..M4 end.
-// Without the cover PCB, -12.59 (bottom of the battery) is enough and the case
-// gets 6.6 mm thinner.
-BADGE_BOTTOM = -19.19;
+// The badge's own cover PCB and standoffs come off; the case carries the board
+// itself. What is left underneath is the battery and the components, and the
+// lowest of those is the battery at -12.59 from the top face of the board. The
+// floor sits 1 mm below that, so there is 12.0 mm of clear space under the board.
+// Measured a different stack? Change this one number and the inner floor, the
+// wall and the dock all follow.
+BADGE_BOTTOM = -12.59;
 
-// What sticks out of the mounting holes on the top side. From the STEP: 3.31 mm,
-// diameter 6.2 mm. The front plate makes local room for it.
-STUD_TOP = 3.31;
-STUD_D   = 6.20;
+// ---- the four support columns ----------------------------------------------
+// They stand where the badge's own spacers used to sit, on the four mounting
+// holes. 5.0 mm is the most they can be: any wider and they touch components.
+// Each carries a pin that drops into the 2.5 mm hole and locates the board.
+COL_D  = 5.00;   // column diameter, do not go above this
+PIN_D  = 2.30;   // pin into the 2.5 mm mounting hole
+PIN_UP = 0.60;   // how far the pin stands above the top face of the board
 Z_DISP    = 4.50;  // top of the display glass
 Z_BTN     = 5.00;  // top of the push buttons
 Z_JOY     = 7.00;  // top of the joystick cap
@@ -107,11 +111,18 @@ mags   = [[-47,18],[47,18],[-47,-18],[47,-18]];
 leds   = [-20, -10, 0, 10, 20];
 LED_D  = 4.40;   // diameter of the hole per LED
 
-// Hardware sticks out around the mounting holes: a spacer below, possibly a
-// screw head above. The columns are therefore rings.
-COL_D    = 8.00;   // outer diameter of the columns
-SPACER_D = 5.20;   // clear space for the spacer, nut or screw head
-SPACER_H = 4.00;   // how deep that recess goes on the underside
+// A column that ends flush with the underside of the board, with a pin on top
+// that goes through the mounting hole and sticks out PIN_UP. The tip is
+// chamfered so the board drops onto it without fishing for the hole.
+module support_column() {
+    h = -PCB_T - FLOOR_Z;                 // up to the underside of the board
+    cylinder(h = h, d = COL_D);
+    translate([0,0,h]) {
+        cylinder(h = PCB_T + PIN_UP - 0.40, d = PIN_D);
+        translate([0,0,PCB_T + PIN_UP - 0.40])
+            cylinder(h = 0.40, d1 = PIN_D, d2 = PIN_D - 0.80);
+    }
+}
 
 // ================================================================ BACK SHELL
 module magnet_pocket() {
@@ -138,12 +149,14 @@ module backshell() {
                         bead_zone(3.0);
                     }
             }
-            // No support columns: the cover PCB on the standoffs already carries
-            // the board. Only the bosses around the magnet pockets, clipped to
-            // the cavity.
+            // Support columns and magnet bosses, clipped to the cavity so they
+            // stay out of the groove that takes the tongue.
             intersection() {
-                for (p = mags) translate([p[0],p[1],FLOOR_Z])
-                    cylinder(h = 2.0, d = 11.0);
+                union() {
+                    for (p = mounts) translate([p[0],p[1],FLOOR_Z]) support_column();
+                    for (p = mags) translate([p[0],p[1],FLOOR_Z])
+                        cylinder(h = 2.0, d = 11.0);
+                }
                 translate([0,0,FLOOR_Z - 1]) linear_extrude(30) cavity_2d();
             }
         }
@@ -224,11 +237,10 @@ module frontplate() {
             // raised screen bezel
             translate([0,0,DECK_Z1 - 0.10])
                 linear_extrude(BEZ_Z1 - DECK_Z1 + 0.10) bezel_2d();
-            // Local boss above each mounting hole. The standoff sticks out 3.31 mm
-            // there and the deck is only 1.8 mm up, so the deck rises 0.9 mm
-            // locally, leaving 1.1 mm of material above the recess.
-            for (p = mounts) translate([p[0],p[1],DECK_Z1 - 0.10])
-                cylinder(h = 1.00, d1 = 10.0, d2 = 8.6);
+            // Columns that press the board down onto the ones in the shell.
+            // Nothing sticks out above the board any more, so the deck stays flat.
+            for (p = mounts) translate([p[0],p[1],0])
+                cylinder(h = DECK_Z0, d = COL_D);
         }
         // clearance for the display module itself
         translate([-28.90, -13.90, DECK_Z0 - 0.10])
@@ -245,9 +257,9 @@ module frontplate() {
         for (x = leds) translate([x, -16.2, -1]) cylinder(h = 40, d = LED_D);
         // status LED D15
         translate([-33.27, 17.1, -1]) cylinder(h=40, d=7.4);
-        // recess for the standoff that sticks out above the board
+        // blind hole in each column for the pin that pokes through the board
         for (p = mounts) translate([p[0],p[1],-0.10])
-            cylinder(h = STUD_TOP + 0.30 + 0.10, d = STUD_D + 0.80);
+            cylinder(h = PIN_UP + 0.50, d = PIN_D + 0.40);
         // blind pilot hole, only if you do want screws
         if (BACK_SCREWS) for (p = mounts) translate([p[0],p[1],-0.10])
             cylinder(h = DECK_Z1 - 0.20 + 0.10, d = 1.60);
@@ -364,7 +376,11 @@ if (part == "check")
     intersection() { union() { backshell(); frontplate(); } badge_solids(); }
 
 module badge_solids() {
-    translate([0,0,-PCB_T]) linear_extrude(PCB_T) pcb_2d();          // PCB
+    // PCB, with its four 2.5 mm mounting holes, because the pins pass through them
+    difference() {
+        translate([0,0,-PCB_T]) linear_extrude(PCB_T) pcb_2d();
+        for (p = mounts) translate([p[0],p[1],-PCB_T-1]) cylinder(h = PCB_T+2, d = 2.50);
+    }
     translate([-28.1,-13,3]) cube([56.2,39.6,1.5]);                  // display
     translate([-42.78,-0.15,0]) { cube([18,18,3.5],center=true); cylinder(h=7,r=4.2); }
     for (p = btns) translate([p[0],p[1],0]) cylinder(h=5,r=3);
@@ -383,10 +399,8 @@ module badge_solids() {
     translate([-33.35,-26.35,-3.01]) cube([6.70,2.70,1.90]);        // SW4, power
     translate([-32.71,-27.88,-2.81]) cube([6.92,3.85,1.10]);        // SW4 slider + 1.5 mm travel
     translate([-58.60,9.00,-4.54]) cube([4.25,6.00,2.90]);          // P2
-    // standoffs M1..M4 with the cover PCB below, from the STEP: 6.2 mm diameter,
-    // z = -19.19 to +3.31
-    for (p = mounts) translate([p[0],p[1],BADGE_BOTTOM])
-        cylinder(h = STUD_TOP - BADGE_BOTTOM, d = STUD_D);
+    // The badge's own standoffs and cover PCB are off; the case carries the board.
+    // What has to stay clear is the 2.5 mm hole the pin goes through.
     translate([-6,-16.2,-4.64]) cube([12,12,3.05]);                  // buzzer
     translate([44.94,3.05,-4.54]) cube([11.6,11,2.95]);              // LoRa module
     translate([-30.98,-5.65,-5.29]) cube([6,6.5,3.76]);              // battery connector

@@ -7,16 +7,17 @@ file, per designator.
 
 ![The badge in its case](images/01_case.png)
 
-Outside 124.4 x 59.4 x 29.1 mm. The badge itself is 119 x 54 x 1.6 mm, with the joystick
-7 mm above the board. Below the board sit the 7 mm battery and, under that, the cover PCB
-on its standoffs, which the STEP puts at z = -19.19.
+Outside 124.4 x 59.4 x 22.5 mm. The badge itself is 119 x 54 x 1.6 mm, with the joystick
+7 mm above the board and the 7 mm battery below it.
 
-**Check this number first.** At the top of `fri3d_badge_2026_case.scad` is
-`BADGE_BOTTOM = -19.19`. That is the lowest point of everything hanging under the board,
-measured from the top face of the board. The value comes from the STEP and is where the
-standoffs M1..M4 end. Measure your own stack and put that number in; the inner floor, the
-wall and the dock all follow from it. Without the cover PCB fitted, -12.59 is enough and
-the case gets 6.6 mm thinner.
+The badge's own standoffs and cover PCB come off. The case carries the board instead, on
+four columns of its own, and that is what keeps it this thin. Under the board there is
+12.0 mm of clear space, which is the battery plus a millimetre.
+
+`BADGE_BOTTOM` at the top of `fri3d_badge_2026_case.scad` is the lowest point of anything
+hanging under the board, measured from its top face. It is -12.59, the bottom of the
+battery according to the STEP. Change that one number and the inner floor, the wall and
+the dock all follow.
 
 No screws, no visible holes and no lettering anywhere. The front plate clips on and the
 back is fully closed and blank. `BACK_TEXT = true` embosses FRI3D 2026 into the back,
@@ -55,8 +56,8 @@ proud and the joystick 3.5 mm. Only around the display does it rise to 6.5 mm to
 bezel. A flat deck above the 4.5 mm display would bury every control, which is the whole
 reason for the step.
 
-Each mounting hole carries a 10 mm round boss standing 0.9 mm above the deck, with a
-7.0 mm recess underneath it for the standoff. Nothing goes through to the front.
+Behind each mounting hole is a 5 mm column that presses the board down onto the one in the
+shell. Nothing sticks out above the board, so the deck stays flat and unbroken.
 
 ![Exploded](images/02_exploded.png)
 
@@ -64,18 +65,19 @@ Each mounting hole carries a 10 mm round boss standing 0.9 mm above the deck, wi
 
 ![Inside](images/10_inside.png)
 
-No support columns. The cover PCB on the four standoffs already carries the board, so the
-case does not have to: the badge drops in as one piece and rests on the floor. What is
-there are the four bosses around the magnet pockets.
+Four columns stand where the badge's own spacers used to be, on the four mounting holes.
+They are 5.0 mm across, which is as wide as they can get before they touch components, and
+12.0 mm tall, ending flush with the underside of the board.
 
-On the top side the standoff sticks out 3.31 mm above the board at 6.2 mm diameter,
-according to the STEP. The deck of the front plate is only 1.8 mm up, so there is a 7.0 mm
-recess reaching to 3.6 mm. To keep material above it, the deck rises 0.9 mm at those four
-spots as a 10 mm round boss with a chamfered edge, leaving 1.1 mm.
+Each one carries a 2.3 mm pin that goes up through the 2.5 mm mounting hole and stands
+0.6 mm above the board. The tip is chamfered, so the board drops onto the four pins without
+fishing for the holes, and once it is on it cannot shift. The front plate has a matching
+column with a blind hole for the pin, so it clamps the board rather than the pin.
 
-Those four bumps are the only shapes visible on the front. If you would rather not have
-them, the alternatives are a lower screw head on the badge, or a 7 mm hole straight
-through the plate.
+Because nothing sticks out above the board any more, the front of the plate is completely
+flat. Widen `COL_D` at your peril: above 5.0 mm the columns start meeting components.
+
+Next to the columns are the four bosses around the magnet pockets.
 
 ## The back
 
@@ -118,7 +120,7 @@ fitted: it sticks out 9.5 mm past the board edge and the case simply will not cl
 it. Set `LORA_PORT = true` at the top of the source if you have it.
 
 Measured from the centre of the PCB, with z = 0 on the top face of the board. The outside
-of the back is at z = -22.59 and the top of the deck at z = 3.80.
+of the back is at z = -15.99 and the top of the deck at z = 3.80.
 
 All four openings sit partly in the front plate and partly in the back shell, because the
 seam between them is at z = 0.90. That is not a problem: the cut-out is subtracted from
@@ -159,9 +161,9 @@ page. `pdf/cover_sticker.svg` is the same file for a cutting plotter.
 
 | Part | Material | Orientation | Supports |
 |---|---|---|---|
-| `stl/01_back_shell.stl` | 32.9 cm3, about 41 g | back on the bed | no |
-| `stl/02_front_plate.stl` | 12.0 cm3, about 15 g | top face on the bed | no |
-| `stl/03_dock.stl` | 60.8 cm3, about 75 g | flat, tray upwards | no |
+| `stl/01_back_shell.stl` | 28.4 cm3, about 35 g | back on the bed | no |
+| `stl/02_front_plate.stl` | 12.2 cm3, about 15 g | top face on the bed | no |
+| `stl/03_dock.stl` | 58.3 cm3, about 72 g | flat, tray upwards | no |
 
 Beyond that you need eight 6 x 3 mm neodymium disc magnets. No screws.
 
@@ -178,11 +180,12 @@ Beyond that you need eight 6 x 3 mm neodymium disc magnets. No screws.
 
 ## Assembly
 
-1. Leave the badge's own standoffs and cover PCB in place. They carry the board.
+1. Take the badge's four standoffs and its cover PCB off. The case takes over that job.
 2. Glue four magnets into the back shell, all four with the same pole facing out.
 3. Glue four magnets into the dock with the opposite pole facing up. Test with the badge
    on top before the glue goes anywhere.
-4. Drop the badge into the shell. The connectors land in their openings on their own.
+4. Lay the battery on the floor of the shell, then drop the board onto the four pins. The
+   connectors land in their openings on their own.
 5. Put the front plate on and press it down all round until you feel the six clips engage.
 6. Cut out the sticker and lay it on the plate to check before you stick it.
 
