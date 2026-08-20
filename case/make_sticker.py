@@ -30,8 +30,8 @@ cuts = []
 # screen bezel: the raised part pokes through the sticker
 bezel = box(-31.0, -13.8, 31.0, 30.0).buffer(2.0, join_style=1).buffer(-2.0).intersection(outer)
 cuts.append(bezel.buffer(CL))
-# joystick
-cuts.append(box(-50.78,-8.15,-34.78,7.85).buffer(2.5, join_style=1).buffer(CL))
+# joystick, 19.0 x 19.0 with 0.8 mm corners around the 18 x 18 block
+cuts.append(box(-51.48,-8.85,-34.08,8.55).buffer(0.8, join_style=1).buffer(CL))
 # push buttons
 for (x,y) in btns: cuts.append(Point(x,y).buffer(3.7 + CL, quad_segs=48))
 # one hole per LED

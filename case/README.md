@@ -56,6 +56,37 @@ proud and the joystick 3.5 mm. Only around the display does it rise to 6.5 mm to
 bezel. A flat deck above the 4.5 mm display would bury every control, which is the whole
 reason for the step.
 
+### The buttons need more than a round hole
+
+The switches are Alps SKPMAM. Sliced out of the STEP, the body is 5.94 x 5.90 mm and runs
+up to z = 3.50; above that sits a cap of 4.97 x 4.87 tapering to 4.50 at z = 5.00.
+
+The cap goes through a 7.4 mm round hole without trouble. The body does not: its corners
+reach 4.19 mm from the centre against a hole radius of 3.70. Push the plate on and the
+deck lands on the four corners of every switch. On the first print that tore a switch off
+the board.
+
+So each button has two cuts. The round 7.4 mm hole through the whole deck, which is all
+you see from outside, and a 7.0 x 7.0 mm relief with 1 mm corners cut up from underneath
+to z = 3.60. Only the four corners of that relief fall outside the round hole, and above
+them 0.20 mm of deck is left, a single layer at 0.2 mm. It is a cosmetic skin and nothing
+more. If it tears, raise `FWALL` or set `BTN_BODY_TOP = DECK_Z1` and let the relief break
+right through; the holes then read as rounded squares.
+
+There are 1.40 mm to divide between that skin and how far the button stands proud, and
+nothing can change that: the body top is at 3.50 and the cap top at 5.00.
+
+### The joystick and the screen
+
+P7 is a block of 18.0 x 18.0 mm running up to z = 5.60, with a 2 mm stick above it. The
+opening is 19.0 x 19.0 with 0.8 mm corners. The corner radius matters as much as the size:
+at 2.5 mm the arc cuts straight across the square corners of the block, which is what the
+old 21 x 21 opening did.
+
+The clearance pocket for the display is now tight to the glass, 0.6 mm all round. It used
+to run to y = 30.10, straight out through the top wall, which left a 57.8 mm slot along
+the back edge with nothing over it but the bezel.
+
 Behind each mounting hole is a 5 mm column that presses the board down onto the one in the
 shell. Nothing sticks out above the board, so the deck stays flat and unbroken.
 
@@ -165,7 +196,7 @@ page. `pdf/cover_sticker.svg` is the same file for a cutting plotter.
 | Part | Material | Orientation | Supports |
 |---|---|---|---|
 | `stl/01_back_shell.stl` | 28.3 cm3, about 35 g | back on the bed | no |
-| `stl/02_front_plate.stl` | 12.2 cm3, about 15 g | top face on the bed | no |
+| `stl/02_front_plate.stl` | 12.8 cm3, about 16 g | top face on the bed | no |
 | `stl/03_dock.stl` | 58.3 cm3, about 72 g | flat, tray upwards | no |
 
 Beyond that you need eight 6 x 3 mm neodymium disc magnets. No screws.
@@ -195,19 +226,35 @@ Beyond that you need eight 6 x 3 mm neodymium disc magnets. No screws.
 To open it: spudger into one of the two pry slots on the short ends, then work along the
 edge.
 
-## Not yet tested in the real world
+## What the first print taught us
 
-The fit has been checked numerically: the case is boolean-intersected with every component
+The first version was printed and assembled, and it found three things the numbers had
+not.
+
+**The plate rested on the square switch bodies.** Fixed as described above. This is the
+one that matters, because a plate sitting 1.7 mm high cannot seat, which means the clip
+joint was never fairly tested either.
+
+**The joystick opening was 21 x 21 with 2.5 mm corners.** Now 19 x 19 with 0.8 mm corners.
+
+**The display pocket ran out through the top wall.** Now bounded to the glass.
+
+All three were invisible to the interference check, because the check model was wrong in
+exactly the places that mattered: the buttons were 6 mm cylinders instead of square bodies,
+and the joystick was an 18 x 18 slab that stopped at z = 1.75 with a thin cylinder above
+it. A check is only worth the model it runs against. Both are now taken from slices
+through the STEP, and the check caught the joystick corners on the first rebuild.
+
+The clip joint is deliberately unchanged: judge it again now that the plate can actually
+go down. If it still gives, `BEAD` at the top of the source sets the pressure, 0.5 holds
+hard, and `bead_spots` sets how many points hold. `BACK_SCREWS = true` adds four M2 from
+the back.
+
+The rest is still numbers only. The case is boolean-intersected with every component
 volume from the STEP and the overlap is zero, including the USB-C, the audio jack, the
 LoRa connector and the microSD. Back shell against front plate is zero as well. The clip
 joint was measured by probing points in both meshes: a 1.05 mm tongue in a 1.10 mm groove,
 a 0.4 mm barb, locking at z = -2.90 with 0.10 mm of play.
-
-But print shrinkage is not simulated, and a clip joint is the kind of thing you have to
-feel once. Print the front plate on its own first. Fifteen grams, and it tells you
-immediately whether the button holes, the screen window and the clip pressure are right.
-`FIT` at the top of the source sets the clearance around the PCB and `BEAD` sets the clip
-pressure.
 
 ## Building it again
 

@@ -105,8 +105,20 @@ module outer_2d() offset(r=1.6) pcb_2d(FIT + WALL - 1.6);
 // ------------------------------------------------------------- positions
 // mounting holes, 2.5 mm diameter, already in the PCB
 mounts = [[-37.5,-17.5],[-32.5,23.5],[37.5,18.5],[37.5,-17.5]];
-// 6 mm push buttons
+// 6 mm push buttons, Alps SKPMAM. Measured from the STEP by slicing the solid:
+// the body is 5.94 x 5.90 mm and runs up to z = 3.50, then a cap of 4.97 x 4.87
+// tapers to 4.50 at z = 5.00. The cap fits through the round hole, the body does
+// not: its corners reach 4.19 mm from the centre against a hole radius of 3.70.
+// So the deck needs a rectangular relief cut up from underneath.
 btns   = [[-13.5,-22.5],[13.5,-22.5],[45.75,-11.25],[54.75,-1],[45.75,9.25],[36.25,-1]];
+BTN_D        = 7.40;   // round hole, the only thing visible from outside
+BTN_BODY     = 7.00;   // rectangular relief for the switch body
+BTN_BODY_R   = 1.00;   // corner radius of that relief
+BTN_BODY_TOP = 3.60;   // top of the relief, 0.10 above the body
+// What is left above the relief is DECK_Z1 - BTN_BODY_TOP = 0.20 mm, and only in
+// the four corners: everything else there is inside the round hole anyway. If
+// that single layer tears, either raise FWALL or set BTN_BODY_TOP = DECK_Z1 and
+// let the relief break through.
 // magnets
 mags   = [[-47,18],[47,18],[-47,-18],[47,-18]];
 // 5 x WS2812B, body 5.4 x 5.0 mm, centred on y = -16.2
@@ -248,17 +260,31 @@ module frontplate() {
             for (p = mounts) translate([p[0],p[1],0])
                 cylinder(h = DECK_Z0, d = COL_D);
         }
-        // clearance for the display module itself
-        translate([-28.90, -13.90, DECK_Z0 - 0.10])
-            cube([57.80, 44.00, BEZ_Z0 - DECK_Z0 + 0.10]);
+        // Clearance for the display module itself. STEP: 56.20 x 39.60, from
+        // x -28.10 to 28.10 and y -13.00 to 26.60, z 3.00 to 4.50. Kept tight to
+        // the glass, 0.60 mm all round, so the top edge of the plate stays shut.
+        // It used to run to y = 30.10, straight through the top wall, which left
+        // a 57.80 mm slot along the back edge with only the bezel over it.
+        translate([-28.70, -13.60, DECK_Z0 - 0.10])
+            cube([57.40, 41.00, BEZ_Z0 - DECK_Z0 + 0.10]);
         // screen window
         translate([-26.9, -11.8, -1]) linear_extrude(40)
             offset(r=1.5) offset(delta=-1.5) square([53.8, 37.2]);
-        // joystick
+        // Joystick P7. The block is 18.0 x 18.0 and runs up to z = 5.60, with a
+        // 2 mm stick above it. The opening was 21.0 x 21.0 with 2.5 mm corners,
+        // which is 1.5 mm of air per side; 19.0 x 19.0 leaves 0.50. The corner
+        // radius has to come down with it: at r = 2.5 the arc cuts across the
+        // square corners of the block, which the interference check now catches.
         translate([-42.78, -0.15, -1]) linear_extrude(40)
-            offset(r=2.5) square([16.0, 16.0], center=true);
-        // push buttons
-        for (p = btns) translate([p[0],p[1],-1]) cylinder(h=40, d=7.4);
+            offset(r=0.8) square([17.4, 17.4], center=true);
+        // push buttons: round hole for the cap...
+        for (p = btns) translate([p[0],p[1],-1]) cylinder(h=40, d=BTN_D);
+        // ...and a blind rectangular relief for the square body underneath it
+        for (p = btns) translate([p[0],p[1],DECK_Z0 - 1.0])
+            linear_extrude(BTN_BODY_TOP - DECK_Z0 + 1.0)
+                offset(r=BTN_BODY_R)
+                    square([BTN_BODY - 2*BTN_BODY_R, BTN_BODY - 2*BTN_BODY_R],
+                           center=true);
         // one hole per LED instead of a continuous slot
         for (x = leds) translate([x, -16.2, -1]) cylinder(h = 40, d = LED_D);
         // status LED D15
@@ -388,8 +414,18 @@ module badge_solids() {
         for (p = mounts) translate([p[0],p[1],-PCB_T-1]) cylinder(h = PCB_T+2, d = 2.50);
     }
     translate([-28.1,-13,3]) cube([56.2,39.6,1.5]);                  // display
-    translate([-42.78,-0.15,0]) { cube([18,18,3.5],center=true); cylinder(h=7,r=4.2); }
-    for (p = btns) translate([p[0],p[1],0]) cylinder(h=5,r=3);
+    // Joystick P7 as it really is: a block of 18 x 18 from z = 0.10 to 5.60 with
+    // a 2 mm stick on top. It used to be modelled as an 18 x 18 slab that stopped
+    // at z = 1.75 with a 8.4 mm cylinder above it, which is why the check never
+    // noticed that the deck was cutting into the block.
+    translate([-51.78,-9.15,0.10]) cube([18.00, 18.00, 5.50]);
+    translate([-43.78,-1.15,5.60]) cube([ 2.00,  2.00, 1.40]);
+    // Push buttons as they really are: a square body, not a 6 mm cylinder. The
+    // cylinder is what hid the collision that broke a switch on the first print.
+    for (p = btns) translate([p[0],p[1],0]) {
+        translate([0,0,1.75]) cube([5.94, 5.94, 3.50], center=true);  // body
+        translate([0,0,4.25]) cube([4.97, 4.97, 1.50], center=true);  // cap
+    }
     for (x = leds) translate([x-2.7,-18.7,0]) cube([5.4,5.0,1.6]);
     translate([-26.1,-15.8,-12.59]) cube([60,40,7]);                 // battery
     translate([-9,1,-4.79]) cube([18,25.5,3.2]);                     // ESP32
