@@ -734,6 +734,21 @@ check("met configuratie staat hij er",
 check("en hij is vingergroot",
       hoofd.send_btn.size is not None and hoofd.send_btn.size[1] >= 44)
 
+# Een bijgewerkte activity draait meteen, een service pas na een herstart. In dat
+# uur praat nieuw schermwerk met een oude service, en dat is geen hypothese: het
+# gebeurde bij de eerste installatie op de badge. Geen stuurknop is het goede
+# antwoord, een traceback op het scherm van een kind niet.
+_seq, _zichtbaar = service.buttons_seq, service.visible_buttons
+del service.buttons_seq
+del service.visible_buttons
+try:
+    hoofd._shown_send = None
+    hoofd._refresh()
+    check("een oude service geeft geen stuurknop en geen fout",
+          hoofd.send_btn.has_flag(lv.obj.FLAG.HIDDEN))
+finally:
+    service.buttons_seq, service.visible_buttons = _seq, _zichtbaar
+
 # ===========================================================================
 
 print("\n%d checks, %d mislukt" % (CHECKS["n"], len(FAILURES)))

@@ -263,13 +263,22 @@ class Messages(Activity):
         self._paint_send()
 
     def _paint_send(self):
+        # Een bijgewerkte activity draait meteen, een service pas na een
+        # herstart. Tussen die twee momenten praat nieuw schermwerk met een oude
+        # service, en dan hoort er geen stuurknop te staan in plaats van een
+        # traceback op het scherm van een kind.
+        seq = getattr(service, "buttons_seq", None)
+        visible = getattr(service, "visible_buttons", None)
+        if seq is None or visible is None:
+            self._show_send(False)
+            return
         # Op de naam mee cachen: die bepaalt welke knoppen zichtbaar zijn, want
         # naar zichzelf sturen mag een badge niet.
-        state = (service.buttons_seq, service.CHILD_NAME)
+        state = (seq, service.CHILD_NAME)
         if state == self._shown_send:
             return
         self._shown_send = state
-        self._show_send(bool(service.visible_buttons()))
+        self._show_send(bool(visible()))
 
     def _show_send(self, visible):
         if self.send_btn is None or HIDDEN is None:
