@@ -32,6 +32,8 @@ SKIN     = 0.80;   // material between magnet and outer face
 MAG_D    = 6.00;   // magnet diameter
 MAG_H    = 3.00;   // magnet thickness
 MAG_FIT  = 0.20;   // magnet pocket clearance (glue them in)
+MAG_BOSS_D = 11.00; // boss around the magnet pocket, inside the shell
+MAG_BOSS_H = 2.00;  // height of that boss above the inner floor
 DOCK_ANG = 65;     // angle of the badge relative to the desk
 BACK_SCREWS = false; // true = add four M2 from the back; false = snap fit only
 PORT_LABELS = false; // true = emboss AUDIO and LoRa into the front plate
@@ -125,9 +127,13 @@ module support_column() {
 }
 
 // ================================================================ BACK SHELL
+// The pocket has to break through the top of the boss, otherwise it is a sealed
+// void and the magnet can never go in. Boss top is MAG_BOSS_H above the floor;
+// the pocket is cut 0.2 mm past it.
 module magnet_pocket() {
+    top = FLOOR_Z + MAG_BOSS_H + 0.20;
     translate([0,0,BACK_Z + SKIN])
-        cylinder(h = MAG_H + MAG_FIT, d = MAG_D + MAG_FIT);
+        cylinder(h = max(MAG_H + MAG_FIT, top - (BACK_Z + SKIN)), d = MAG_D + MAG_FIT);
 }
 
 module backshell() {
@@ -155,7 +161,7 @@ module backshell() {
                 union() {
                     for (p = mounts) translate([p[0],p[1],FLOOR_Z]) support_column();
                     for (p = mags) translate([p[0],p[1],FLOOR_Z])
-                        cylinder(h = 2.0, d = 11.0);
+                        cylinder(h = MAG_BOSS_H, d = MAG_BOSS_D);
                 }
                 translate([0,0,FLOOR_Z - 1]) linear_extrude(30) cavity_2d();
             }

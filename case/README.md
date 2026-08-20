@@ -77,7 +77,10 @@ column with a blind hole for the pin, so it clamps the board rather than the pin
 Because nothing sticks out above the board any more, the front of the plate is completely
 flat. Widen `COL_D` at your peril: above 5.0 mm the columns start meeting components.
 
-Next to the columns are the four bosses around the magnet pockets.
+Next to the columns stand the four bosses around the magnet pockets, 11 mm across and
+2 mm tall. They are rings, not discs: the pocket is 3.2 mm deep, deeper than the 2.4 mm
+wall, so it has to break through the top of the boss. Drop the magnet in from the inside
+and it lands on 0.8 mm of skin.
 
 ## The back
 
@@ -161,7 +164,7 @@ page. `pdf/cover_sticker.svg` is the same file for a cutting plotter.
 
 | Part | Material | Orientation | Supports |
 |---|---|---|---|
-| `stl/01_back_shell.stl` | 28.4 cm3, about 35 g | back on the bed | no |
+| `stl/01_back_shell.stl` | 28.3 cm3, about 35 g | back on the bed | no |
 | `stl/02_front_plate.stl` | 12.2 cm3, about 15 g | top face on the bed | no |
 | `stl/03_dock.stl` | 58.3 cm3, about 72 g | flat, tray upwards | no |
 
@@ -209,10 +212,15 @@ pressure.
 ## Building it again
 
 `./build.sh` rebuilds the three STLs, both PDFs and all ten images in `images/`, and runs
-the three interference checks. It needs `openscad`, and `python3` with `shapely` and
-`cairosvg`; add `trimesh` and the checks report a volume instead of just saying the file
-is not empty. Run it after any change to the source, otherwise the pictures in this file
-quietly start describing an older design.
+the three interference checks plus a sealed-void check. It needs `openscad`, and `python3`
+with `shapely` and `cairosvg`; add `trimesh` and the checks report a volume instead of just
+saying the file is not empty. Run it after any change to the source, otherwise the pictures
+in this file quietly start describing an older design.
+
+The sealed-void check exists because the magnet pockets were once closed over the top by
+0.4 mm. The part was watertight, the interference checks were clean and the render looked
+right, but the magnets could never have gone in. A pocket that does not reach a surface is
+now a build failure.
 
 About that second check: `check2` intersects the back shell with the front plate and comes
 out non-empty but with zero volume. That is not an interference. The two parts touch along

@@ -37,10 +37,31 @@ print("  " + c + ": " + format(v, ".3f") + " mm3" + verdict)
 ' "$c"
 done
 
+echo "Sealed voids, all three have to come out at zero..."
+# A pocket that does not break through the surface is watertight and passes every
+# other check, but nothing can ever be put into it. The magnet pockets were exactly
+# that once, so this is checked on every build.
+python3 -c '
+import sys
+try:
+    import trimesh
+except ImportError:
+    print("  install trimesh to check for sealed voids"); sys.exit(0)
+for f in ["stl/01_back_shell.stl","stl/02_front_plate.stl","stl/03_dock.stl"]:
+    m = trimesh.load(f)
+    voids = [p for p in m.split(only_watertight=False) if p.volume < 0]
+    print("  %-24s %8.1f mm3  watertight %-5s  sealed voids %d%s"
+          % (f.split("/")[-1], m.volume, m.is_watertight, len(voids),
+             "  SEALED VOID" if voids else ""))
+' 2>/dev/null
+
 echo "Renders..."
+# openscad segfaults without a display, so fall back to a virtual one.
+GUI=""
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then GUI="xvfb-run -a"; fi
 render() {  # part  outfile  camera  size
   echo "  $2"
-  openscad -o "images/$2.png" --imgsize="$4" --colorscheme=Tomorrow --camera="$3" \
+  $GUI openscad -o "images/$2.png" --imgsize="$4" --colorscheme=Tomorrow --camera="$3" \
            -D "part=\"$1\"" fri3d_badge_2026_case.scad >/dev/null 2>&1
 }
 render assembly   01_case                   0,0,-8,60,0,25,360    1500,1050
