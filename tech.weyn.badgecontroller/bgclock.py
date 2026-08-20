@@ -7,10 +7,8 @@ en dan moet je bijhouden waar je vandaan kwam en hopen dat die app dat overleeft
 
 De cijfers zijn getekend en niet getypt. Het grootste lettertype in deze firmware
 is `montserrat_28`, en dat lees je niet vanuit bed. `_Digit` en `_Clock` komen
-uit tech.weyn.pomodoro, met één verschil: daar staan de niet-brandende segmenten
-op opaciteit 18 zodat het op een echt zevensegmentdisplay lijkt. Hier staan ze
-helemaal uit, want dat is vijfendertig lampjes die 's nachts licht geven voor de
-sier.
+uit tech.weyn.pomodoro en zijn daar identiek aan: de segmenten lopen door tot in
+de hoeken, en wat niet brandt is volledig doorzichtig.
 
 De helderheid regelt de achtergrondverlichting, niet dit scherm. Hier is alles
 wit op zwart, en hoe donker dat wordt bepaalt `badge_service`.
@@ -58,7 +56,7 @@ COL_WOLK = 0x8892A4
 COL_REGEN = 0x5C8FD6
 
 SEGMENT_AAN = 255
-SEGMENT_UIT = 0          # bij Pomodoro 18, hier nul: geen licht voor de sier
+SEGMENT_UIT = 0          # volledig doorzichtig, ook bij Pomodoro
 
 
 class _Digit:
@@ -74,17 +72,33 @@ class _Digit:
     }
     ORDER = "abcdefg"
 
-    def __init__(self, parent, x, y, w, h, t):
+    @staticmethod
+    def vlakken(w, h, t):
+        """De zeven rechthoeken, met hoeken die elkaar overlappen.
+
+        De eerste versie liet elk segment pas beginnen waar zijn buur ophield,
+        en dan blijft er in elke hoek een blokje van t bij t zwart. Op 58 bij
+        100 met een streek van 14 is dat een hap van veertien pixels uit elke
+        hoek: een 0 wordt een achthoek en een 8 valt uiteen in losse blokjes.
+        Van een halve meter afstand is dat het verschil tussen lezen en raden.
+
+        Nu lopen a en d over de volle breedte en b, c, e en f van de rand tot
+        voorbij het midden, zodat elke hoek door twee segmenten gedekt wordt.
+        Dat ze elkaar overlappen mag: een gedoofd segment is hier volledig
+        doorzichtig, dus het brandende eronder blijft gewoon staan."""
         mid = (h - t) // 2
-        boxes = {
-            "a": (t, 0, w - 2 * t, t),
-            "b": (w - t, t, t, mid - t),
-            "c": (w - t, mid + t, t, h - mid - 2 * t),
-            "d": (t, h - t, w - 2 * t, t),
-            "e": (0, mid + t, t, h - mid - 2 * t),
-            "f": (0, t, t, mid - t),
-            "g": (t, mid, w - 2 * t, t),
+        return {
+            "a": (0, 0, w, t),
+            "b": (w - t, 0, t, mid + t),
+            "c": (w - t, mid, t, h - mid),
+            "d": (0, h - t, w, t),
+            "e": (0, mid, t, h - mid),
+            "f": (0, 0, t, mid + t),
+            "g": (0, mid, w, t),
         }
+
+    def __init__(self, parent, x, y, w, h, t):
+        boxes = self.vlakken(w, h, t)
         self.parts = {}
         for name in self.ORDER:
             bx, by, bw, bh = boxes[name]

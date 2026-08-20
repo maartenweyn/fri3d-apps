@@ -1243,9 +1243,71 @@ equal("niets is niets", bgclock.graden(None), "")
 equal("en onzin ook", bgclock.graden("unavailable"), "")
 
 # De niet-brandende segmenten staan uit en niet op een schaduw. Pomodoro zet ze
-# op 18 zodat het op een echt display lijkt; hier is dat vijfendertig lampjes
-# die \'s nachts licht geven voor de sier.
+# op nul, net als de klok; een gedimd achtje achter elk cijfer laat een 3
+# op een 9 lijken.
 equal("een gedoofd segment geeft geen licht", bgclock.SEGMENT_UIT, 0)
+
+
+# De hoeken. Elk segment begon vroeger pas waar zijn buur ophield, en dan blijft
+# er in elke hoek een blokje van t bij t zwart: op de klok veertien pixels, en
+# dan is een 0 een achthoek en een 8 een rij losse blokjes. Deze test rastert de
+# cijfers en eist dat er niets meer openstaat.
+def _dekking(w, h, t, brandend):
+    dek = set()
+    for naam, (bx, by, bw, bh) in bgclock._Digit.vlakken(w, h, t).items():
+        if naam not in brandend:
+            continue
+        for px in range(bx, bx + max(2, bw)):
+            for py in range(by, by + max(2, bh)):
+                dek.add((px, py))
+    return dek
+
+
+# 58 bij 100 met streek 14 is de klok, 60 bij 105 met 15 is Pomodoro, en de
+# derde is klein genoeg om te zien of de formule daar niet omklapt.
+for _w, _h, _t in ((58, 100, 14), (60, 105, 15), (34, 48, 6)):
+    _maat = "%dx%d" % (_w, _h)
+    _nul = _dekking(_w, _h, _t, "abcdef")
+    _rand = ([(x, 0) for x in range(_w)] + [(x, _h - 1) for x in range(_w)] +
+             [(0, y) for y in range(_h)] + [(_w - 1, y) for y in range(_h)])
+    check("de omtrek van een 0 is dicht op " + _maat,
+          all(punt in _nul for punt in _rand))
+    check("en de vier hoeken ook op " + _maat,
+          all(punt in _nul for punt in
+              ((0, 0), (_w - 1, 0), (0, _h - 1), (_w - 1, _h - 1))))
+
+    # Een 8 is een 0 met de middenbalk erbij. Hangt die er los in, dan is het
+    # geen 8 maar drie strepen.
+    _acht = _dekking(_w, _h, _t, "abcdefg")
+    _mid = (_h - _t) // 2
+    check("de middenbalk van een 8 raakt beide zijkanten op " + _maat,
+          (0, _mid) in _acht and (_w - 1, _mid) in _acht)
+
+    # Geen segment mag buiten zijn vakje vallen: twee cijfers staan maar een
+    # achtste van hun breedte uit elkaar.
+    for _naam, _vak in bgclock._Digit.vlakken(_w, _h, _t).items():
+        _bx, _by, _bw, _bh = _vak
+        check("segment %s past binnen %s" % (_naam, _maat),
+              _bx >= 0 and _by >= 0 and _bx + _bw <= _w and _by + _bh <= _h)
+
+
+# De twee apps tekenen dezelfde cijfers. Ze delen geen module - een app-map
+# staat niet op het pad van de andere - dus dit vergelijkt de bron. Loopt dat
+# uit elkaar, dan ziet Pomodoro er anders uit dan de klok en merkt niemand het
+# tot er iemand naar kijkt.
+def _vlakken_uit_bron(pad):
+    with open(pad, encoding="utf-8") as fh:
+        tekst = fh.read()
+    start = tekst.index('"a": (')
+    einde = tekst.index("}", start)
+    return [r.strip().rstrip(",") for r in tekst[start:einde].splitlines()
+            if r.strip()]
+
+
+equal("Pomodoro tekent exact dezelfde zeven segmenten als de klok",
+      _vlakken_uit_bron(os.path.join(ROOT, "tech.weyn.pomodoro",
+                                     "pomodoro.py")),
+      _vlakken_uit_bron(os.path.join(APP_DIR, "bgclock.py")))
 
 laag = lv.layer_top()
 kinderen = len(laag.children)

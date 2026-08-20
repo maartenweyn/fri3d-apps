@@ -215,7 +215,42 @@ Full round trip confirmed against the real Mosquitto broker: a publish to
 "gestuurd om 16:04", and one tap puts the message text back on
 `home/badges/<name>/ack`.
 
+## Badge
+
+### 0.3.1
+
+The night clock draws its digits with the same seven rectangles as Pomodoro, and
+it had the same holes in them. At 58 by 100 with a 14 pixel stroke, the clock you
+look at from bed showed a 0 with four bites taken out of it. The corners are
+closed now. The digits kept their size and their weight, and nothing else on that
+screen moved.
+
 ## Pomodoro
+
+### 0.4.2
+
+A 3 read as a 9 from across the desk, and the fault was in the geometry rather
+than in anyone's eyes.
+
+Each of the seven segments began where its neighbour ended, which leaves a hole
+the width of the stroke in all four corners. At 60 by 105 with a 15 pixel stroke
+that is a fifteen pixel bite out of every corner: a 0 turns into an octagon and
+an 8 falls apart into loose blocks. The segments now run into the corners and
+overlap there. An unlit segment is fully transparent, so the overlap costs
+nothing and every corner ends up covered twice.
+
+The dimmed segments went with them. Drawing all seven at opacity 18 looked like a
+real seven-segment display and put every digit inside a faint 8, which is
+precisely what makes a 3 look like a 9 and a 1 like a 7. The badge clock never
+did this and now neither does the timer. The colon blinks off completely instead
+of halfway.
+
+The badge suite is at 3112 checks. The new ones raster the digits at three sizes
+and demand a closed outline, a middle bar that touches both sides, and no segment
+outside its own cell. One of them reads both source files and compares the seven
+rectangles line by line: the clock and the timer draw the same digits without
+sharing a module, and geometry that drifts apart is invisible until someone looks
+at the screen.
 
 ### 0.3.1
 

@@ -4,7 +4,7 @@
   "short_description": "This badge on Home Assistant: one MQTT link, its own health, and a night clock",
   "long_description": "The background app that connects this badge to Home Assistant. It owns the single MQTT connection other apps borrow, reports battery, voltage and WiFi signal as sensors that appear in Home Assistant by themselves, and after a while of nobody touching it either turns the screen off or leaves a dimmed clock with the date, the battery and today's weather. At night that clock dims further and then goes dark; one press of the S button brings it back for ten seconds. Which badge this is, and which broker it talks to, are typed here on the badge itself.",
   "fullname": "tech.weyn.badgecontroller",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "categories": [
     "System"
   ],

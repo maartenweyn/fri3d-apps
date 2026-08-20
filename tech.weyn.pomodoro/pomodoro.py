@@ -129,7 +129,12 @@ CHIME_END_SHORT = "wrk:d=8,o=5,b=180:g5,e5,c5"
 CHIME_END_LONG = "new:d=8,o=5,b=180:g5,c5,e5,4c5"
 
 SEGMENT_ON_OPA = 255
-SEGMENT_GHOST_OPA = 18
+# An unlit segment is fully transparent, not a faint ghost. Drawing all seven at
+# opacity 18 looked like a real display and made every digit sit inside a dim 8:
+# a 3 reads as a 9 and a 1 as a 7 from any distance. The badge clock never did
+# this, and now neither does Pomodoro. The colon uses the same value, so it
+# blinks off completely instead of half.
+SEGMENT_OFF_OPA = 0
 FLASH_MS = 2000
 FLASH_PERIOD_MS = 200
 LED_INTERVAL_MS = 50
@@ -147,17 +152,35 @@ class _Digit:
     }
     ORDER = "abcdefg"
 
-    def __init__(self, parent, x, y, w, h, t):
+    @staticmethod
+    def boxes(w, h, t):
+        """The seven rectangles, with corners that overlap.
+
+        The first version started each segment where its neighbour ended, which
+        leaves a t by t hole in every corner. At 60 by 105 with a 15 pixel
+        stroke that is a fifteen pixel bite out of each corner: a 0 turns into
+        an octagon and an 8 falls apart into loose blocks. From across the room
+        that is the difference between reading and guessing.
+
+        So a and d now span the full width and b, c, e and f run from the edge
+        past the middle, which covers every corner twice. The overlap is
+        harmless: an unlit segment is fully transparent, so whatever is lit
+        underneath stays visible.
+
+        Kept identical to _Digit in tech.weyn.badgecontroller/bgclock.py."""
         mid = (h - t) // 2
-        boxes = {
-            "a": (t, 0, w - 2 * t, t),
-            "b": (w - t, t, t, mid - t),
-            "c": (w - t, mid + t, t, h - mid - 2 * t),
-            "d": (t, h - t, w - 2 * t, t),
-            "e": (0, mid + t, t, h - mid - 2 * t),
-            "f": (0, t, t, mid - t),
-            "g": (t, mid, w - 2 * t, t),
+        return {
+            "a": (0, 0, w, t),
+            "b": (w - t, 0, t, mid + t),
+            "c": (w - t, mid, t, h - mid),
+            "d": (0, h - t, w, t),
+            "e": (0, mid, t, h - mid),
+            "f": (0, 0, t, mid + t),
+            "g": (0, mid, w, t),
         }
+
+    def __init__(self, parent, x, y, w, h, t):
+        boxes = self.boxes(w, h, t)
         self.parts = {}
         for name in self.ORDER:
             bx, by, bw, bh = boxes[name]
@@ -182,7 +205,7 @@ class _Digit:
         for name, part in self.parts.items():
             part.set_style_bg_color(shade, 0)
             part.set_style_bg_opa(
-                SEGMENT_ON_OPA if name in lit else SEGMENT_GHOST_OPA, 0)
+                SEGMENT_ON_OPA if name in lit else SEGMENT_OFF_OPA, 0)
 
 
 class _Clock:
@@ -229,7 +252,7 @@ class _Clock:
             for dot in self.dots:
                 dot.set_style_bg_color(shade, 0)
                 dot.set_style_bg_opa(
-                    SEGMENT_ON_OPA if dots_lit else SEGMENT_GHOST_OPA, 0)
+                    SEGMENT_ON_OPA if dots_lit else SEGMENT_OFF_OPA, 0)
 
 
 class Pomodoro(Activity):
