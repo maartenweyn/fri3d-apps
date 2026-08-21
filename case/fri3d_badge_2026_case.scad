@@ -119,6 +119,26 @@ BTN_BODY_TOP = 3.60;   // top of the relief, 0.10 above the body
 // the four corners: everything else there is inside the round hole anyway. If
 // that single layer tears, either raise FWALL or set BTN_BODY_TOP = DECK_Z1 and
 // let the relief break through.
+// Display glass from the STEP: 56.20 x 39.60, z 3.00 .. 4.50. The clearance
+// pocket in the front plate is built from these four edges plus DISP_CL. The top
+// gets its own figure, because that is the side that runs closest to the edge of
+// the board and the side the module is hardest to drop into.
+DISP_X0 = -28.10; DISP_X1 = 28.10;
+DISP_Y0 = -13.00; DISP_Y1 = 26.60;
+DISP_CL   = 0.60;  // clearance at the sides and the bottom
+DISP_CL_T = 1.40;  // clearance at the top. Room for more if you need it: the
+                   // outer face is at 29.70 and the wall under the deck starts
+                   // at 28.40, so anything up to 28.40 still leaves a closed rim.
+
+// A name on the front plate, top right above the buttons. Empty string = nothing,
+// and that is the default. Engraved, not raised: the visible face of the plate is
+// the face that goes on the bed, so a recess prints as a void in the first few
+// layers while raised letters would have to hang below the bed.
+FRONT_NAME = "";
+NAME_POS   = [46.0, 19.5];  // free deck between the bezel, the buttons and the edge
+NAME_SIZE  = 7.0;
+NAME_DEPTH = 0.50;
+
 // magnets
 mags   = [[-47,18],[47,18],[-47,-18],[47,-18]];
 // 5 x WS2812B, body 5.4 x 5.0 mm, centred on y = -16.2
@@ -260,13 +280,13 @@ module frontplate() {
             for (p = mounts) translate([p[0],p[1],0])
                 cylinder(h = DECK_Z0, d = COL_D);
         }
-        // Clearance for the display module itself. STEP: 56.20 x 39.60, from
-        // x -28.10 to 28.10 and y -13.00 to 26.60, z 3.00 to 4.50. Kept tight to
-        // the glass, 0.60 mm all round, so the top edge of the plate stays shut.
+        // Clearance for the display module, from DISP_* at the top of the source.
         // It used to run to y = 30.10, straight through the top wall, which left
         // a 57.80 mm slot along the back edge with only the bezel over it.
-        translate([-28.70, -13.60, DECK_Z0 - 0.10])
-            cube([57.40, 41.00, BEZ_Z0 - DECK_Z0 + 0.10]);
+        translate([DISP_X0 - DISP_CL, DISP_Y0 - DISP_CL, DECK_Z0 - 0.10])
+            cube([DISP_X1 - DISP_X0 + 2*DISP_CL,
+                  DISP_Y1 - DISP_Y0 + DISP_CL + DISP_CL_T,
+                  BEZ_Z0 - DECK_Z0 + 0.10]);
         // screen window
         translate([-26.9, -11.8, -1]) linear_extrude(40)
             offset(r=1.5) offset(delta=-1.5) square([53.8, 37.2]);
@@ -297,6 +317,13 @@ module frontplate() {
             cylinder(h = DECK_Z1 - 0.20 + 0.10, d = 1.60);
         // pry slots on the short ends to get the plate off again
         pry_notches();
+        // a name, engraved into the top face
+        if (FRONT_NAME != "")
+            translate([NAME_POS[0], NAME_POS[1], DECK_Z1 - NAME_DEPTH])
+                linear_extrude(NAME_DEPTH + 0.01)
+                    text(FRONT_NAME, size = NAME_SIZE, halign = "center",
+                         valign = "center", font = "Liberation Sans:style=Bold",
+                         spacing = 1.05);
         // markings in the plate, 0.5 mm deep, off by default
         if (PORT_LABELS) {
             translate([-44.0, 23.5, DECK_Z1 - 0.50]) linear_extrude(0.61)

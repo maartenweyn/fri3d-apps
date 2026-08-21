@@ -21,8 +21,8 @@ the dock all follow.
 
 No screws, no visible holes and no lettering anywhere. The front plate clips on and the
 back is fully closed and blank. `BACK_TEXT = true` embosses FRI3D 2026 into the back,
-0.6 mm deep, and `PORT_LABELS = true` puts AUDIO and LoRa into the front plate. Both are
-off by default.
+0.6 mm deep, `PORT_LABELS = true` puts AUDIO and LoRa into the front plate, and
+`FRONT_NAME` engraves a name above the buttons. All three are off by default.
 
 ## The clip joint
 
@@ -83,14 +83,39 @@ opening is 19.0 x 19.0 with 0.8 mm corners. The corner radius matters as much as
 at 2.5 mm the arc cuts straight across the square corners of the block, which is what the
 old 21 x 21 opening did.
 
-The clearance pocket for the display is now tight to the glass, 0.6 mm all round. It used
-to run to y = 30.10, straight out through the top wall, which left a 57.8 mm slot along
-the back edge with nothing over it but the bezel.
+The clearance pocket for the display is built from `DISP_X0`, `DISP_X1`, `DISP_Y0` and
+`DISP_Y1` at the top of the source, which are the glass edges from the STEP, plus `DISP_CL`
+of 0.6 mm at the sides and the bottom and `DISP_CL_T` of 1.4 mm at the top. The top gets
+more because that is the side the module is hardest to drop into. The pocket used to run to
+y = 30.10, straight out through the top wall, which left a 57.8 mm slot along the back edge
+with nothing over it but the bezel. It now ends at 28.00 and leaves a 1.7 mm rim. There is
+room for more if you need it: the wall under the deck starts at 28.40, so anything up to
+that still closes.
 
 Behind each mounting hole is a 5 mm column that presses the board down onto the one in the
 shell. Nothing sticks out above the board, so the deck stays flat and unbroken.
 
 ![Exploded](images/02_exploded.png)
+
+## Putting a name on it
+
+![NINA on the front plate](named/front_plate_NINA.png)
+
+`FRONT_NAME` engraves a name into the top right of the plate, above the buttons, 0.5 mm
+deep. Empty by default.
+
+```
+openscad -o front_plate_NINA.stl --export-format binstl \
+         -D 'part="frontplate"' -D 'FRONT_NAME="NINA"' fri3d_badge_2026_case.scad
+NAME=NINA python3 make_sticker.py
+```
+
+Engraved rather than raised, because the visible face of the plate goes on the bed. A
+recess prints as a void in the first few layers; raised letters would have to hang below
+the bed. `NAME_POS`, `NAME_SIZE` and `NAME_DEPTH` move and resize it. The free deck runs
+from x = 32 to 60 and y = 13 to 27, between the bezel, the buttons and the edge.
+
+`named/` holds a plate and a matching sticker with NINA on them.
 
 ## Inside
 
@@ -196,7 +221,7 @@ page. `pdf/cover_sticker.svg` is the same file for a cutting plotter.
 | Part | Material | Orientation | Supports |
 |---|---|---|---|
 | `stl/01_back_shell.stl` | 28.3 cm3, about 35 g | back on the bed | no |
-| `stl/02_front_plate.stl` | 12.8 cm3, about 16 g | top face on the bed | no |
+| `stl/02_front_plate.stl` | 12.7 cm3, about 16 g | top face on the bed | no |
 | `stl/03_dock.stl` | 58.3 cm3, about 72 g | flat, tray upwards | no |
 
 Beyond that you need eight 6 x 3 mm neodymium disc magnets. No screws.

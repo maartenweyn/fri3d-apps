@@ -3,9 +3,15 @@
 Same geometry as fri3d_badge_2026_case.scad, at 1:1 scale.
 Writes an SVG and a PDF, both in millimetres.
 """
+import os
 import cairosvg
 from shapely.geometry import Polygon, Point, box
 from shapely.ops import unary_union
+
+# A name top right above the buttons, matching FRONT_NAME in the scad. Set it
+# with NAME=NINA python3 make_sticker.py, or leave it empty for a blank sticker.
+FRONT_NAME = os.environ.get("NAME", "")
+NAME_POS   = (46.0, 19.5)
 
 # ---- geometry, identical to the scad ---------------------------------------
 FIT, WALL = 0.30, 2.40
@@ -92,6 +98,10 @@ for (x,y), lab in btns.items():
     svg.append(label(x+dx, y+dy, lab, size=4.6))
 svg.append(label(-18.2,-22.5, "MENU", size=3.0, anchor="end", ls=0.35))
 svg.append(label( 18.2,-22.5, "START", size=3.0, anchor="start", ls=0.35))
+
+# the name, same spot as the engraving in the plate
+if FRONT_NAME:
+    svg.append(label(NAME_POS[0], NAME_POS[1], FRONT_NAME, size=7.0, ls=0.3))
 
 # no other text: the case carries its own markings
 
