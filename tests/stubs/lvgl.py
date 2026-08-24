@@ -68,6 +68,9 @@ class Obj:
     def set_style_text_font(self, font, part):
         self.styles["text_font"] = font
 
+    def set_style_radius(self, radius, part):
+        self.styles["radius"] = radius
+
     def add_event_cb(self, cb, code, ud):
         self.cbs.append((cb, code))
 
