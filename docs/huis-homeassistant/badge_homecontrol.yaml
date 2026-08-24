@@ -1,0 +1,284 @@
+# Huisbediening op de badge (tech.weyn.homecontrol).
+#
+# Drie helften: wat er op de badge staat, wat er gebeurt als er iemand op drukt,
+# en wat de badge over het huis te zien krijgt.
+#
+# De badge kent geen entiteiten en geen services. Hij tekent wat er op
+# home/badges/<naam>/control_panel staat en zet bij een druk het id van die knop
+# op home/badges/<naam>/control_press. De vertaling van id naar script staat
+# hier, en alleen hier: een payload met een servicenaam erin zou van
+# brokerreferenties het recht maken om elke service in huis aan te roepen, en
+# dat toestel ligt op een aanrecht.
+#
+# Knoppen wijzigen doe je hieronder. De badge neemt het binnen een seconde over;
+# er hoeft niets opnieuw geïnstalleerd te worden. Een badge waar nooit een
+# paneel naartoe gepubliceerd is heeft een leeg scherm, en dat is meteen de
+# aan-en-uitschakelaar: één badge knoppen geven is één keer publiceren.
+#
+# Alle badges krijgen nu hetzelfde paneel, maar het topic hangt aan de naam van
+# de badge, dus differentiëren is een kwestie van een lijst. Zie `panelen`
+# hieronder: wie daarin staat krijgt zijn eigen knoppen en de rest verandert
+# niet mee.
+#
+# **Geen schuine streep in het achtervoegsel.** De badge-app plakt
+# home/badges/<naam>/ voor alles zonder `/` erin en laat de rest staan zoals het
+# is, want zo hangt het weer aan een gedeeld topic. Vandaar control_panel en
+# niet control/panel.
+
+- id: "1787320000001"
+  alias: Huispaneel op de badges
+  description: >-
+    Zet het bedieningspaneel op elke badge in de lijst. Retained, zodat het er
+    na een herstart meteen weer staat.
+
+    Publiceert zodra een badge zichzelf online meldt, en bij HA-start alles nog
+    eens. Alleen op HA-start zou betekenen dat een badge die vanmiddag voor het
+    eerst opstart tot de volgende herstart van Home Assistant een leeg scherm
+    houdt.
+
+    De `state`-sleutel van een knop verwijst naar een sleutel in het
+    toestandsbericht hieronder, niet naar een entity_id: welke entiteiten
+    erachter zitten hoeft de badge niet te weten.
+
+    `confirm` op het alarm is met opzet. Een alarm dat aangaat omdat iemand de
+    badge oppakte is geen alarm.
+  mode: single
+  triggers:
+    # Een badge zegt zelf wanneer hij er is: badge_service publiceert retained
+    # "online" op home/badges/<naam>/status, bij elke herverbinding opnieuw. Dat
+    # is een betere trigger dan alleen HA-start, want het dekt ook een badge die
+    # er vanmiddag pas bij komt, een badge die van naam verandert, en een broker
+    # die zijn retained berichten kwijt is.
+    - trigger: mqtt
+      topic: home/badges/+/status
+      payload: online
+      id: online
+    # En bij HA-start alles, voor het geval een badge al online was.
+    - trigger: homeassistant
+      event: start
+      id: start
+  variables:
+    # Wie een paneel krijgt. Publiceren naar een naam waar geen badge op
+    # luistert doet geen kwaad, maar het blijft wel retained staan.
+    #
+    # **Een naam hier weghalen haalt het paneel niet weg.** Retained blijft
+    # liggen tot er een leeg bericht overheen gaat:
+    #   mqtt.publish topic=home/badges/<naam>/control_panel payload="" retain=true
+    badges: &badges
+      - keuken
+      - badkamer
+      - nina
+      - mattijs
+    # Wat iedereen krijgt zolang hij niet in `panelen` staat.
+    standaard:
+      - id: licht_uit
+        label: Licht beneden
+        state: licht
+        symbol: POWER
+      - id: alarm_aan
+        label: Alarm aan
+        state: alarm
+        symbol: BELL
+        confirm: true
+      - id: koepel_lucht
+        label: Koepel ventilatie
+        state: koepel
+        symbol: UP
+      - id: koepel_dicht
+        label: Koepel dicht
+        state: koepel
+        symbol: DOWN
+    # En hier wijk je af. Een badge die hierin staat krijgt zijn eigen lijst in
+    # plaats van de standaard, en de rest verandert daar niet van mee. Zes
+    # knoppen is het maximum dat de app toont; wat daarboven staat valt weg.
+    #
+    #   panelen:
+    #     nina:
+    #       - id: licht_uit
+    #         label: Licht beneden
+    #         state: licht
+    #
+    # Wil je dat dezelfde knop op een andere badge iets anders doet, geef hem
+    # dan een ander id en zet dat id in de luisteraar onderaan. Het id is wat de
+    # badge terugstuurt, dus dat is de plek waar het uit elkaar loopt.
+    panelen: {}
+    # Bij een badge die online komt alleen die badge, anders allemaal. Een naam
+    # die niet in `badges` staat krijgt niets: de lijst blijft de baas.
+    # Handmatig uitvoeren in Home Assistant laat `trigger` ongedefinieerd, en
+    # dat publiceert dus naar iedereen. Precies wat je wil als je het met de
+    # hand aftrapt.
+    doelen: >-
+      {{ badges | select('eq', trigger.topic.split('/')[2]) | list
+         if (trigger is defined and trigger.id | default('') == 'online')
+         else badges }}
+  actions:
+    - repeat:
+        for_each: "{{ doelen }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "home/badges/{{ repeat.item }}/control_panel"
+              retain: true
+              payload: >-
+                {{ {"title": "Huis",
+                    "buttons": panelen.get(repeat.item, standaard)} | to_json }}
+
+# ---------------------------------------------------------------------------
+
+- id: "1787320000002"
+  alias: Huispaneel toestand naar de badges
+  description: >-
+    Wat de badge over het huis te zien krijgt: één retained JSON met een sleutel
+    per knop. Tekst, geen entiteitstoestand: dat `armed_home` "aan (thuis)"
+    heet weet Home Assistant, en de badge hoeft dat nooit te leren.
+
+    Eén bericht en niet een topic per sleutel, want dan kan een knop nooit half
+    bijgewerkt zijn.
+
+    Retained, zodat een badge die om drie uur 's nachts herstart meteen weer iets
+    te tonen heeft in plaats van te wachten tot er iemand een lamp aanraakt.
+
+    Hetzelfde bericht naar elke badge: het huis is voor alle badges hetzelfde.
+    Wijkt een badge straks af in zijn knoppen, dan kan hij nog altijd dezelfde
+    sleutels lezen; een sleutel die hij niet gebruikt kost hem niets.
+  mode: queued
+  max: 10
+  triggers:
+    # Ook hier: een badge die online komt heeft meteen een toestand nodig, want
+    # zonder blijft de onderregel van elke knop leeg tot er iemand een lamp
+    # aanraakt.
+    - trigger: mqtt
+      topic: home/badges/+/status
+      payload: online
+      id: online
+    - trigger: state
+      id: wissel
+      entity_id:
+        - alarm_control_panel.home_alarm
+        - input_number.dakkoepel_position
+        - switch.double_relay_switch_2x1_5kw
+        - switch.double_relay_switch_2x1_5kw_2
+        - switch.double_relay_switch_2x1_5kw_3
+        - light.office_office_dimmer
+        - light.living_reading_lamp
+    - trigger: homeassistant
+      event: start
+      id: start
+  variables:
+    badges: *badges
+    doelen: >-
+      {{ badges | select('eq', trigger.topic.split('/')[2]) | list
+         if (trigger is defined and trigger.id | default('') == 'online')
+         else badges }}
+    alarm_raw: "{{ states('alarm_control_panel.home_alarm') }}"
+    koepel_pos: "{{ states('input_number.dakkoepel_position') | int(0) }}"
+    # Dezelfde vijf als in script.lights_out. Staan ze uit elkaar, dan zegt de
+    # badge "uit" terwijl de buro-dimmer nog brandt.
+    licht_aan: >-
+      {{ ['switch.double_relay_switch_2x1_5kw',
+          'switch.double_relay_switch_2x1_5kw_2',
+          'switch.double_relay_switch_2x1_5kw_3',
+          'light.office_office_dimmer',
+          'light.living_reading_lamp']
+         | map('states') | select('eq', 'on') | list | count }}
+  actions:
+    - repeat:
+        for_each: "{{ doelen }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "home/badges/{{ repeat.item }}/control_state"
+              retain: true
+              payload: >-
+                {{ {
+                  "alarm": {
+                    "text": {"disarmed": "uit", "armed_home": "aan (thuis)",
+                             "armed_away": "aan (weg)", "arming": "bezig",
+                             "pending": "bezig", "triggered": "ALARM"}
+                            .get(alarm_raw, alarm_raw),
+                    "color": "CC5555" if alarm_raw == "triggered"
+                             else ("44AA44" if alarm_raw.startswith("armed")
+                                   else "8890A0")
+                  },
+                  "koepel": {
+                    "text": "dicht" if koepel_pos | int(0) <= 0
+                            else (koepel_pos | int(0) ~ "%"),
+                    "color": "8890A0" if koepel_pos | int(0) <= 0 else "E0A030"
+                  },
+                  "licht": {
+                    "text": "uit" if licht_aan | int(0) == 0
+                            else (licht_aan | int(0) ~ " aan"),
+                    "color": "8890A0" if licht_aan | int(0) == 0 else "E0A030"
+                  }
+                } | to_json }}
+
+# ---------------------------------------------------------------------------
+
+- id: "1787320000003"
+  alias: Badge drukt op een huisknop
+  description: >-
+    Een druk op de badge naar het bijbehorende script, en daarna een ack terug.
+
+    De ack is er voor de gevallen waar de toestand niet verandert. De badge
+    wacht na een druk op bewijs en zegt anders dat er niets terugkwam, en
+    "Koepel ventilatie" op een koepel die al open staat doet met opzet niets:
+    het script heeft een conditie. Zonder ack zou de knop dan tien seconden
+    staan wachten op een wissel die nooit komt.
+
+    De ack krijgt geen tekst mee. Dan pakt de badge de toestand die er op dat
+    moment staat, en die is een seconde na het script de waarheid. Zo staat de
+    vertaling van toestand naar tekst maar op één plek.
+  mode: queued
+  max: 10
+  triggers:
+    - trigger: mqtt
+      topic: home/badges/+/control_press
+  variables:
+    badge: "{{ trigger.topic.split('/')[2] }}"
+    knop: "{{ trigger.payload_json.id | default('') }}"
+    volg: "{{ trigger.payload_json.seq | default(0) }}"
+  conditions:
+    - condition: template
+      value_template: "{{ knop != '' }}"
+  actions:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ knop == 'licht_uit' }}"
+          sequence:
+            - action: script.lights_out
+        - conditions:
+            - condition: template
+              value_template: "{{ knop == 'alarm_aan' }}"
+          sequence:
+            - action: script.alarm_on
+        - conditions:
+            - condition: template
+              value_template: "{{ knop == 'koepel_lucht' }}"
+          sequence:
+            - action: script.open_shutter_10
+        - conditions:
+            - condition: template
+              value_template: "{{ knop == 'koepel_dicht' }}"
+          sequence:
+            - action: script.close_shutter
+      default:
+        # Een knop die hier niet staat komt van een paneel dat niet meer klopt.
+        # Dat hoort op de badge te zien te zijn en niet stil te verdwijnen.
+        - action: mqtt.publish
+          data:
+            topic: "home/badges/{{ badge }}/control_ack"
+            payload: >-
+              {{ {"id": knop, "seq": volg, "ok": false,
+                  "text": "onbekend"} | to_json }}
+        - stop: "onbekende knop"
+    # De toestandsautomatisatie hierboven is intussen gelopen. Even wachten,
+    # zodat de badge bij een ack zonder tekst de nieuwe toestand oppakt en niet
+    # de oude.
+    - delay:
+        seconds: 1
+    - action: mqtt.publish
+      data:
+        topic: "home/badges/{{ badge }}/control_ack"
+        payload: >-
+          {{ {"id": knop, "seq": volg, "ok": true} | to_json }}
