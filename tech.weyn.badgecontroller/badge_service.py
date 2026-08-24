@@ -741,10 +741,43 @@ def discovery_payloads():
 
 WEER_VELDEN = (
     ("toestand", ("toestand", "state", "condition", "weer")),
+    # De conditie van de dag staat los van die van het moment. Om zeven uur
+    # 's ochtends is het bewolkt en wordt het een zonnige dag met een bui om
+    # vier uur; de klok toont links het eerste en rechts het tweede.
+    ("dag", ("dag", "day", "vandaag", "forecast", "dag_toestand")),
+    # Of er vandaag nog neerslag komt. Home Assistant heeft het uurbericht
+    # gezien en de badge niet, dus dit is een antwoord en geen conclusie.
+    ("regen", ("regen", "rain", "nat", "rain_today", "precipitation")),
     ("nu", ("nu", "now", "temp", "temperature", "current")),
     ("max", ("max", "high", "temp_max", "temperature_max")),
     ("min", ("min", "low", "templow", "temp_min", "temperature_min")),
 )
+
+WEER_TEKST = ("toestand", "dag")
+WEER_VLAG = ("regen",)
+
+JA = ("true", "1", "ja", "yes", "on", "y")
+NEE = ("false", "0", "nee", "no", "off", "n", "none", "null", "unknown",
+       "unavailable")
+
+
+def ja_nee(waarde):
+    """Een vlag uit andermans sjabloon, in welke vorm hij ook aankomt.
+
+    Een Jinja-sjabloon dat een boolean bedoelt levert vaak de string "True",
+    een andere bron "1" of "ja". Wat geen van beide is geeft None, en dan laat
+    parse_weer het veld weg in plaats van er nee van te maken: onbekend is niet
+    hetzelfde als droog."""
+    if isinstance(waarde, bool):
+        return waarde
+    if isinstance(waarde, (int, float)):
+        return waarde != 0
+    tekst = str(waarde).strip().lower()
+    if tekst in JA:
+        return True
+    if tekst in NEE:
+        return False
+    return None
 
 
 def parse_weer(payload):
@@ -777,8 +810,13 @@ def parse_weer(payload):
             waarde = payload[sleutel]
             if waarde is None or waarde == "":
                 continue
-            if naam == "toestand":
+            if naam in WEER_TEKST:
                 uit[naam] = str(waarde)
+            elif naam in WEER_VLAG:
+                vlag = ja_nee(waarde)
+                if vlag is None:
+                    continue
+                uit[naam] = vlag
             else:
                 try:
                     uit[naam] = float(waarde)

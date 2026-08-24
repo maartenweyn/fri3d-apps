@@ -535,6 +535,28 @@ equal("null in een veld gooit de rest niet weg", service.parse_weer(
     {"toestand": "rainy", "max": 15.0})
 equal("een temperatuur die geen getal is valt weg", service.parse_weer(
     '{"toestand": "rainy", "nu": "unavailable"}'), {"toestand": "rainy"})
+# De dag staat los van het moment: links op de klok wat het nu is, rechts wat
+# het vandaag nog wordt. Home Assistant heeft het uurbericht gezien en de badge
+# niet, dus de regenvlag komt mee als antwoord en niet als conclusie.
+equal("de dagconditie en de regenvlag komen mee", service.parse_weer(
+    b'{"toestand": "cloudy", "dag": "sunny", "regen": true, "nu": 12}'),
+    {"toestand": "cloudy", "dag": "sunny", "regen": True, "nu": 12.0})
+equal("een sjabloon dat True als tekst stuurt telt ook",
+      service.parse_weer('{"dag": "sunny", "regen": "True"}'),
+      {"dag": "sunny", "regen": True})
+equal("en False is echt nee", service.parse_weer('{"regen": "False"}'),
+      {"regen": False})
+equal("een neerslaghoeveelheid van nul is droog",
+      service.parse_weer('{"precipitation": 0}'), {"regen": False})
+equal("en een halve millimeter is nat",
+      service.parse_weer('{"precipitation": 0.5}'), {"regen": True})
+# Onbekend is niet hetzelfde als droog: het veld valt weg, en dan beslist de
+# dagconditie zelf of er druppels bij horen.
+equal("onbekend is geen nee", service.parse_weer('{"regen": "misschien"}'), {})
+equal("ja_nee kent onzin niet", service.ja_nee("misschien"), None)
+equal("een lege dagconditie gooit de rest niet weg",
+      service.parse_weer('{"dag": null, "max": 15}'), {"max": 15.0})
+
 equal("geen JSON is geen weerbericht", service.parse_weer(b"unknown"), {})
 equal("en leeg ook niet", service.parse_weer(b""), {})
 equal("een lijst is geen weerbericht", service.parse_weer("[1, 2]"), {})
@@ -1236,6 +1258,22 @@ equal("iets onbekends is ook maar bewolkt",
       bgclock.icoon_soort("exceptional"), "bewolkt")
 equal("zonder toestand geen pictogram", bgclock.icoon_soort(None), None)
 
+# Het pictogram van de dag doet twee dingen tegelijk, want ze zijn allebei
+# waar. Wie alleen het zonnetje ziet vertrekt zonder jas.
+equal("een zonnige dag met een bui laat allebei zien",
+      bgclock.dag_soort("sunny", True), "zonregen")
+equal("zonder bui blijft het gewoon de zon",
+      bgclock.dag_soort("sunny", False), "zon")
+equal("een bewolkte dag met een bui is regen",
+      bgclock.dag_soort("partlycloudy", True), "regen")
+equal("zonder vlag beslist de conditie zelf",
+      bgclock.dag_soort("rainy"), "regen")
+equal("en die van een droge dag ook",
+      bgclock.dag_soort("partlycloudy"), "bewolkt")
+equal("een regenvlag zonder conditie is nog altijd regen",
+      bgclock.dag_soort(None, True), "regen")
+equal("en zonder allebei is er niets", bgclock.dag_soort(None), None)
+
 equal("een temperatuur zoals je hem zegt", bgclock.graden(12.4), "12\u00b0")
 equal("en afgerond", bgclock.graden(12.6), "13\u00b0")
 equal("onder nul ook", bgclock.graden(-3.2), "-3\u00b0")
@@ -1332,6 +1370,58 @@ check("en een ander weerbericht ook",
       klok.werk_bij("07:17", "ma 17 aug", 84, {"toestand": "sunny"}))
 check("zonder weerbericht valt er niets om over te struikelen",
       klok.werk_bij("07:18", "ma 17 aug", 84, {}))
+# Het weer staat in twee helften en de rechterkant is nieuw. Een dag die
+# zonnig is met een bui erin moet die bui laten zien, ook al is het op dit
+# moment gewoon bewolkt en droog.
+klok.werk_bij("07:18", "ma 17 aug", 84,
+              {"toestand": "cloudy", "dag": "sunny", "regen": True,
+               "nu": 12, "max": 21, "min": 11})
+equal("links het weer van dit moment", klok.icoon.soort, "bewolkt")
+equal("rechts dat van de dag, met de bui erbij", klok.dag_icoon.soort,
+      "zonregen")
+check("en dan branden de druppels",
+      all(d.styles.get("bg_opa") == 255 for d in klok.dag_icoon.druppels))
+check("met de zon er nog altijd bij",
+      klok.dag_icoon.zon.styles.get("bg_opa") == 255)
+check("links niet, want daar valt op dit moment niets",
+      all(d.styles.get("bg_opa") == 0 for d in klok.icoon.druppels))
+equal("de max staat boven", klok.hoog.text, "21°")
+equal("de min eronder", klok.laag.text, "11°")
+check("een andere dagconditie tekent opnieuw",
+      klok.werk_bij("07:18", "ma 17 aug", 84,
+                    {"toestand": "cloudy", "dag": "sunny", "regen": False,
+                     "nu": 12, "max": 21, "min": 11}))
+equal("en dan valt de bui weg", klok.dag_icoon.soort, "zon")
+check("een oud bericht zonder dagvelden werkt gewoon",
+      klok.werk_bij("07:18", "ma 17 aug", 84, {"toestand": "rainy"}))
+equal("en dan is de dag wat de enige conditie zegt",
+      klok.dag_icoon.soort, "regen")
+
+# Te klein om vanuit bed te lezen was de klacht. De temperatuur van nu krijgt
+# het grootste lettertype dat deze firmware heeft, de max en de min het
+# grootste dat naast een pictogram past.
+equal("de temperatuur van nu staat op 28 punt",
+      klok.nu_temp.styles.get("text_font"), lv.font_montserrat_28)
+for _label, _naam in ((klok.hoog, "max"), (klok.laag, "min")):
+    equal("de %s staat op 20 punt" % _naam,
+          _label.styles.get("text_font"), lv.font_montserrat_20)
+
+# En het moet passen. 320 bij 240, met de datum en de batterij op 128.
+check("het pictogram van nu blijft in de linkerhelft",
+      klok.icoon.x + klok.icoon.maat < 168)
+check("dat van de dag staat rechts", klok.dag_icoon.x >= 168)
+check("de twee helften raken elkaar niet",
+      klok.nu_temp.pos[0] + 90 <= klok.dag_icoon.x)
+for _label in (klok.nu_temp, klok.hoog, klok.laag):
+    _x, _y = _label.pos
+    check("een label van het weer staat op het scherm",
+          0 <= _x < 320 and 144 <= _y and _y + 26 <= 240)
+check("de min staat onder de max en niet ernaast",
+      klok.laag.pos[1] >= klok.hoog.pos[1] + 26
+      and klok.laag.pos[0] == klok.hoog.pos[0])
+check("en de pictogrammen blijven boven de onderrand",
+      klok.dag_icoon.y + klok.dag_icoon.maat <= 240)
+
 check("zonder batterij evenmin",
       klok.werk_bij("07:19", "ma 17 aug", None, None))
 check("de naam hoort erbij en verandert het scherm",

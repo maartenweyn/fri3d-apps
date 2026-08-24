@@ -59,6 +59,24 @@ SEGMENT_AAN = 255
 SEGMENT_UIT = 0          # volledig doorzichtig, ook bij Pomodoro
 
 
+def _zet_font(label, *maten):
+    """Het grootste lettertype uit de lijst dat deze firmware heeft.
+
+    Welke montserrat-maten meegecompileerd zijn verschilt per build, dus vragen
+    en niet aannemen. Vindt hij er geen, dan blijft het thema staan: kleiner dan
+    bedoeld is nog altijd leesbaar, een uitzondering hier zou het hele scherm
+    zwart laten."""
+    for maat in maten:
+        font = getattr(lv, "font_montserrat_%d" % maat, None)
+        if font is not None:
+            try:
+                label.set_style_text_font(font, 0)
+            except Exception:
+                pass
+            return maat
+    return None
+
+
 class _Digit:
     """Eén zevensegmentcijfer, zeven rechthoeken.
 
@@ -178,8 +196,9 @@ class _Klok:
 
 
 # Home Assistant kent tientallen weertoestanden en dit scherm heeft er drie
-# pictogrammen voor. Alles wat naar beneden komt is regen, de rest is bewolkt,
-# en alleen een echt onbewolkte hemel is zon.
+# pictogrammen voor, plus een vierde die er twee combineert. Alles wat naar
+# beneden komt is regen, de rest is bewolkt, en alleen een echt onbewolkte
+# hemel is zon.
 REGEN = ("rainy", "pouring", "snowy", "snowy-rainy", "hail", "lightning",
          "lightning-rainy")
 ZON = ("sunny", "clear-night", "clear")
@@ -196,18 +215,45 @@ def icoon_soort(toestand):
     return "bewolkt"
 
 
-class _Weericoon:
-    """Zon, wolk of regen, getekend met rechthoeken en rondingen.
+def dag_soort(toestand, regen=None):
+    """Het pictogram voor de dag: wat het grotendeels wordt, plus de bui.
 
-    Geen plaatjes: die kosten flash, moeten geladen worden en zien er op 32 bij
-    32 niet beter uit dan dit."""
+    Twee dingen tegelijk, want ze zijn allebei waar. Een dag die zonnig is met
+    een bui erin is geen zonnedag en geen regendag, en wie alleen het zonnetje
+    ziet vertrekt zonder jas. Regen wint dus altijd van de rest, maar duwt de
+    zon er niet af: die schuift naar achter de wolk.
+
+    `regen` is de vlag uit Home Assistant, die het uurbericht van de hele dag
+    heeft gezien. Ontbreekt hij, dan is de conditie van de dag alles wat we
+    hebben."""
+    basis = icoon_soort(toestand)
+    nat = bool(regen) if regen is not None else basis == "regen"
+    if basis is None:
+        return "regen" if nat else None
+    if not nat:
+        return basis
+    return "zonregen" if basis == "zon" else "regen"
+
+
+class _Weericoon:
+    """Zon, wolk, regen, of een zon met een bui erbij.
+
+    Getekend met rechthoeken en rondingen. Geen plaatjes: die kosten flash,
+    moeten geladen worden en zien er op vijftig bij vijftig niet beter uit dan
+    dit.
+
+    De zon wordt als eerste aangemaakt en ligt dus onder de wolk. Dat is
+    precies wat een zon achter een wolk hoort te doen."""
 
     def __init__(self, parent, x, y, maat=34):
+        self.x = x
+        self.y = y
         self.maat = maat
+
         self.zon = lv.obj(parent)
-        self.zon.set_pos(x + maat // 5, y + maat // 5)
-        self.zon.set_size(maat * 3 // 5, maat * 3 // 5)
         self._plat(self.zon, maat)
+        self._zon_klein = None
+        self._zet_zon(False)
 
         self.wolk_groot = lv.obj(parent)
         self.wolk_groot.set_pos(x, y + maat // 3)
@@ -239,6 +285,22 @@ class _Weericoon:
             pass
         obj.set_style_bg_opa(0, 0)
 
+    def _zet_zon(self, klein):
+        """Groot en in het midden, of klein en van achter de wolk uit.
+
+        De radius blijft op `maat` staan en dat is altijd meer dan de helft van
+        de zon, dus hij blijft rond bij allebei de maten."""
+        if klein == self._zon_klein:
+            return
+        self._zon_klein = klein
+        m = self.maat
+        if klein:
+            self.zon.set_pos(self.x + m // 2, self.y)
+            self.zon.set_size(max(4, m * 2 // 5), max(4, m * 2 // 5))
+        else:
+            self.zon.set_pos(self.x + m // 5, self.y + m // 5)
+            self.zon.set_size(max(4, m * 3 // 5), max(4, m * 3 // 5))
+
     def _toon(self, obj, aan, kleur):
         obj.set_style_bg_opa(255 if aan else 0, 0)
         if aan:
@@ -248,12 +310,14 @@ class _Weericoon:
         if soort == self.soort:
             return
         self.soort = soort
-        self._toon(self.zon, soort == "zon", COL_ZON)
-        wolk = soort in ("bewolkt", "regen")
+        self._zet_zon(soort == "zonregen")
+        self._toon(self.zon, soort in ("zon", "zonregen"), COL_ZON)
+        wolk = soort in ("bewolkt", "regen", "zonregen")
         self._toon(self.wolk_groot, wolk, COL_WOLK)
         self._toon(self.wolk_bult, wolk, COL_WOLK)
+        nat = soort in ("regen", "zonregen")
         for d in self.druppels:
-            self._toon(d, soort == "regen", COL_REGEN)
+            self._toon(d, nat, COL_REGEN)
 
 
 class ClockOverlay:
@@ -270,7 +334,9 @@ class ClockOverlay:
         self.batterij = None
         self.icoon = None
         self.nu_temp = None
-        self.bereik = None
+        self.dag_icoon = None
+        self.hoog = None
+        self.laag = None
         self._getoond = ""
 
     # --- opbouw ------------------------------------------------------------
@@ -325,21 +391,36 @@ class ClockOverlay:
         self.batterij.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
         self.batterij.set_text("")
 
-        self.icoon = _Weericoon(self.root, 20, 168, 40)
+        # Het weer staat onderaan in twee helften: links wat het nu is, rechts
+        # wat het vandaag nog wordt. Allebei met een eigen pictogram, want het
+        # weer van het moment is niet het weer van de dag. Dit is de enige
+        # getypte tekst op dit scherm die van een halve meter gelezen moet
+        # worden, dus hij krijgt de ruimte die eronder toch leeg stond.
+        self.icoon = _Weericoon(self.root, 12, 154, 54)
 
         self.nu_temp = lv.label(self.root)
-        self.nu_temp.set_pos(76, 176)
+        self.nu_temp.set_pos(74, 166)
         self.nu_temp.set_style_text_color(lv.color_hex(COL_TIJD), 0)
-        font = getattr(lv, "font_montserrat_24", None) or \
-            getattr(lv, "font_montserrat_20", None)
-        if font is not None:
-            self.nu_temp.set_style_text_font(font, 0)
+        _zet_font(self.nu_temp, 28, 24, 20)
         self.nu_temp.set_text("")
 
-        self.bereik = lv.label(self.root)
-        self.bereik.set_pos(168, 182)
-        self.bereik.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
-        self.bereik.set_text("")
+        self.dag_icoon = _Weericoon(self.root, 170, 154, 54)
+
+        # Max boven min, en niet "15 / 8" op een regel. Gestapeld passen ze op
+        # twintig punt waar ze naast elkaar op veertien moesten, en dat is het
+        # hele punt. De bovenste wit, de onderste gedimd: dan hoef je niet te
+        # bedenken welke welke is.
+        self.hoog = lv.label(self.root)
+        self.hoog.set_pos(232, 154)
+        self.hoog.set_style_text_color(lv.color_hex(COL_TIJD), 0)
+        _zet_font(self.hoog, 20, 18, 16)
+        self.hoog.set_text("")
+
+        self.laag = lv.label(self.root)
+        self.laag.set_pos(232, 184)
+        self.laag.set_style_text_color(lv.color_hex(COL_KLEIN), 0)
+        _zet_font(self.laag, 20, 18, 16)
+        self.laag.set_text("")
 
     # --- tonen en weghalen -------------------------------------------------
 
@@ -374,12 +455,17 @@ class ClockOverlay:
         LVGL-tekst herschrijven die hetzelfde blijft geeft geflikker."""
         if self.root is None:
             return False
-        soort = icoon_soort((weer or {}).get("toestand"))
-        nu = (weer or {}).get("nu")
-        hoog = (weer or {}).get("max")
-        laag = (weer or {}).get("min")
-        sleutel = "%s|%s|%s|%s|%s|%s|%s" % (tijd, datum, batterij, soort, nu,
-                                            "%s/%s" % (hoog, laag), naam)
+        w = weer or {}
+        soort = icoon_soort(w.get("toestand"))
+        # Zonder eigen dagconditie is de enige toestand die er is ook de
+        # dagtoestand. Zo blijft een oud retained bericht gewoon werken.
+        dag = dag_soort(w.get("dag", w.get("toestand")), w.get("regen"))
+        nu = w.get("nu")
+        hoog = w.get("max")
+        laag = w.get("min")
+        sleutel = "%s|%s|%s|%s|%s|%s|%s|%s" % (tijd, datum, batterij, soort,
+                                               dag, nu, "%s/%s" % (hoog, laag),
+                                               naam)
         if sleutel == self._getoond:
             return False
         self._getoond = sleutel
@@ -390,11 +476,10 @@ class ClockOverlay:
         self.datum.set_text(datum or "")
         self.batterij.set_text("%d%%" % batterij if batterij is not None else "")
         self.icoon.set(soort)
+        self.dag_icoon.set(dag)
         self.nu_temp.set_text(graden(nu))
-        if hoog is None and laag is None:
-            self.bereik.set_text("")
-        else:
-            self.bereik.set_text("%s / %s" % (graden(hoog), graden(laag)))
+        self.hoog.set_text(graden(hoog))
+        self.laag.set_text(graden(laag))
         return True
 
 

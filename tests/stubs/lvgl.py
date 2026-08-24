@@ -56,6 +56,18 @@ class Obj:
     def set_style_text_color(self, color, part):
         self.styles["text_color"] = color
 
+    # Deze drie worden bijgehouden en niet weggeslikt: ze zijn het enige bewijs
+    # dat een getekend pictogram brandt of dooft, en dat een label het
+    # lettertype kreeg dat de tekening bedoelde.
+    def set_style_bg_opa(self, opa, part):
+        self.styles["bg_opa"] = opa
+
+    def set_style_bg_color(self, color, part):
+        self.styles["bg_color"] = color
+
+    def set_style_text_font(self, font, part):
+        self.styles["text_font"] = font
+
     def add_event_cb(self, cb, code, ud):
         self.cbs.append((cb, code))
 

@@ -1,6 +1,6 @@
 # Het weerbericht naar de badges sturen.
 #
-# De badge vraagt niets op. Home Assistant publiceert één retained bericht op
+# De badge vraagt niets op. Home Assistant publiceert een retained bericht op
 # een topic dat los staat van de naam van de badge, en elke badge die een klok
 # toont leest hetzelfde bericht. Retained, zodat een badge die om drie uur 's
 # nachts herstart meteen weer iets te tonen heeft in plaats van te wachten tot
@@ -9,14 +9,15 @@
 # Plak dit in configuration.yaml, of in automations.yaml zonder de eerste regel.
 # Vervang weather.forecast_home door je eigen weerentiteit.
 #
-# Het topic staat in be.weyn.badge/badge_config.py als WEER_TOPIC en is
-# standaard home/badges/weer.
+# Het topic staat in badge_config.py als WEER_TOPIC en is standaard
+# home/badges/weer.
 
 automation:
   - alias: Weerbericht naar de badges
     description: >
-      Publiceert conditie, huidige temperatuur en de max en min van vandaag op
-      MQTT, waar de klok op de Fri3d-badges hem leest.
+      Publiceert het weer van dit moment, de conditie van de dag, of het
+      vandaag nog gaat regenen, en de max en min van vandaag op MQTT, waar de
+      klok op de Fri3d-badges hem leest.
     mode: single
     triggers:
       # Elk half uur is ruim genoeg voor een klok, en bij het opstarten meteen
@@ -26,23 +27,62 @@ automation:
       - trigger: homeassistant
         event: start
     actions:
-      # get_forecasts is de enige manier om aan de max en min van vandaag te
-      # komen: die staan niet in de attributen van de entiteit zelf.
+      # get_forecasts is de enige weg naar de max en min van vandaag: die staan
+      # niet in de attributen van de entiteit zelf.
       - action: weather.get_forecasts
         target:
           entity_id: weather.forecast_home
         data:
           type: daily
         response_variable: voorspelling
+      # En het uurbericht erbij, want "wordt het vandaag nog nat" is een vraag
+      # over de hele dag en niet over dit moment. Een weerintegratie zonder
+      # uurbericht mag dit niet laten struikelen: dan valt de badge terug op de
+      # conditie van de dag.
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: hourly
+        response_variable: uurlijks
+        continue_on_error: true
       - variables:
+          nat_condities:
+            - rainy
+            - pouring
+            - snowy
+            - snowy-rainy
+            - hail
+            - lightning
+            - lightning-rainy
           vandaag: "{{ voorspelling['weather.forecast_home'].forecast[0] }}"
+          # Een bui in de namiddag maakt de dag nat, ook als hij verder zonnig
+          # is. De badge tekent dan een zon met druppels: allebei waar, en wie
+          # alleen het zonnetje ziet vertrekt zonder jas.
+          nat: >-
+            {% set ns = namespace(nat = vandaag.condition in nat_condities
+               or (vandaag.precipitation | default(0) | float(0)) > 0) %}
+            {% for uur in (uurlijks | default({}, true)).get('weather.forecast_home', {}).get('forecast', []) %}
+              {% if as_local(as_datetime(uur.datetime)).date() == now().date()
+                 and (uur.condition in nat_condities
+                      or (uur.precipitation | default(0) | float(0)) > 0) %}
+                {% set ns.nat = true %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.nat }}
       - action: mqtt.publish
         data:
           topic: home/badges/weer
           retain: true
+          # "regen" komt hier als de tekst True of False aan; de badge accepteert
+          # dat naast een echte boolean, een 0 of een 1.
           payload: >-
             {{ {
-              "toestand": vandaag.condition,
+              "toestand": states('weather.forecast_home')
+                if states('weather.forecast_home') not in ['unknown', 'unavailable']
+                else vandaag.condition,
+              "dag": vandaag.condition,
+              "regen": nat,
               "nu": state_attr('weather.forecast_home', 'temperature'),
               "max": vandaag.temperature,
               "min": vandaag.templow
@@ -55,6 +95,16 @@ automation:
 #            lightning-rainy
 #   bewolkt  al de rest
 #
+# Links op de klok staat "toestand", het weer van dit moment, met de
+# temperatuur van nu ernaast. Rechts staat "dag" met de max en de min, en daar
+# telt "regen" mee: is die waar en is de dag zonnig, dan tekent de badge een
+# zon met druppels eronder. Een bui in de namiddag is dus zichtbaar op een
+# ochtend die stralend begint.
+#
+# Ontbreekt "dag", dan gebruikt de badge "toestand" voor allebei de kanten. Een
+# oud retained bericht blijft daardoor gewoon werken.
+#
 # Ontbrekende velden zijn geen fout. Een bericht met alleen "toestand" geeft een
-# klok met een pictogram en geen temperaturen; een bericht dat geen geldige JSON
-# is wordt genegeerd en laat het vorige staan.
+# klok met een pictogram en geen temperaturen. Een bericht dat geen geldige JSON
+# is wordt genegeerd en laat het vorige staan: een sensor die even niet
+# beschikbaar is hoort geen lege klok te geven.
