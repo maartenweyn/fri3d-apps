@@ -4,7 +4,7 @@
   "short_description": "A panel of buttons that Home Assistant carries out",
   "long_description": "Lights, alarm, skylight and scenes from the badge. The app knows no entities and no services: Home Assistant publishes a retained panel of buttons on home/badges/<name>/control/panel and the badge draws whatever arrives. A press puts the button id on control/press, where one automation turns it into the right script, so broker credentials never become the right to call any service in the house. A button never lies: it waits for the state or the acknowledgement to come back before it changes, and says so when nothing does. It borrows the MQTT connection from the badgecontroller app rather than opening a second one.",
   "fullname": "tech.weyn.homecontrol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "categories": [
     "Utilities"
   ],

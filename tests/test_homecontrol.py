@@ -87,7 +87,7 @@ import mpos.ui                                         # noqa: E402
 import mpos.config                                     # noqa: E402
 
 import hcpanel as service                              # noqa: E402
-from homecontrol import HomeControl, grid, MIN_CELL    # noqa: E402
+from homecontrol import HomeControl, grid, MIN_CELL, COL_ARM  # noqa: E402
 
 FAILURES = []
 CHECKS = {"n": 0}
@@ -477,18 +477,45 @@ equal("na de toestandswissel staat het er", act.tiles["licht_uit"][1].text, "uit
 act = scherm(state=json.dumps({"alarm": "uit"}))
 act.tiles["alarm_aan"][0].click()
 equal("de eerste tik stuurt niets", len(FakeBridge.published), 0)
-equal("en vraagt om nog een tik", act.tiles["alarm_aan"][1].text, "nog eens")
+# Dit stond in veertien punt onderaan een knop die verder niet veranderde, en
+# dat is precies wat je niet ziet als je niet weet dat je het moet zoeken: er
+# is een keer op het alarm gedrukt en voor kapot aangezien. Nu de hele knop.
+check("en vraagt zichtbaar om nog een tik",
+      act.tiles["alarm_aan"][1].text.startswith("NOG EENS"))
+equal("de knop wordt rood",
+      act.tiles["alarm_aan"][0].styles.get("bg_color"),
+      lv.color_hex(COL_ARM))
+equal("het opschrift eronder wordt groter",
+      act.tiles["alarm_aan"][1].styles.get("text_font"),
+      lv.font_montserrat_18)
+check("en de statusregel zegt het er nog eens bij",
+      "nog eens" in (act.status.text or "").lower())
+equal("een knop zonder bevestiging blijft zoals hij was",
+      act.tiles["licht_uit"][0].styles.get("bg_color"),
+      act._tile_bg.get("licht_uit"))
 act.tiles["alarm_aan"][0].click()
 equal("de tweede tik stuurt wel", len(FakeBridge.published), 1)
 equal("met het juiste id",
       json.loads(FakeBridge.published[0][1])["id"], "alarm_aan")
+equal("en daarna is de knop weer gewoon",
+      act.tiles["alarm_aan"][0].styles.get("bg_color"),
+      act._tile_bg.get("alarm_aan"))
+check("en de statusregel weer leeg", not (act.status.text or ""))
 
 # De bevestiging verloopt. Wie een minuut later langsloopt en de badge aantikt
 # hoort het alarm niet aan te zetten.
 act = scherm(state=json.dumps({"alarm": "uit"}))
 act.tiles["alarm_aan"][0].click()
+equal("er staat hoeveel tijd je hebt",
+      act.tiles["alarm_aan"][1].text, "NOG EENS  %d" % service.CONFIRM_SECONDS)
+act._armed = ("alarm_aan", time.time() + 1.5)
+act._refresh()
+equal("en dat telt af", act.tiles["alarm_aan"][1].text, "NOG EENS  2")
 act._armed = ("alarm_aan", time.time() - 1)
 act._refresh()
+equal("een verlopen bevestiging laat geen rode knop staan",
+      act.tiles["alarm_aan"][0].styles.get("bg_color"),
+      act._tile_bg.get("alarm_aan"))
 act.tiles["alarm_aan"][0].click()
 equal("een verlopen bevestiging stuurt niets", len(FakeBridge.published), 0)
 

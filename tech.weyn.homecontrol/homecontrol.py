@@ -57,6 +57,13 @@ COL_TEXT = 0xFFFFFF
 COL_OK = 0x44AA44
 COL_WARN = 0xCC5555
 COL_BUSY = 0xE0A030
+# De knoppen van het thema zijn oranje, dus een bewapende knop moet een kleur
+# krijgen die daar niet op lijkt. Rood, en de hele knop, niet een regeltje.
+COL_ARM = 0xD03030
+# Alleen gebruikt als de themakleur van een knop niet uit te lezen is. Zonder
+# zo'n terugvalkleur is er na een bevestiging niets om naar terug te gaan en
+# blijft de knop rood staan, en dan liegt hij.
+COL_TILE = 0x2E3A55
 
 PAD = 6
 HEADER = 22
@@ -128,6 +135,8 @@ class HomeControl(Activity):
                                   # raster opnieuw opbouwen
         self._shown = None        # wat er nu op de knoppen staat
         self._armed = None        # (knop-id, deadline) voor een bevestiging
+        self._tile_bg = {}        # de themakleur per knop, om naar terug te gaan
+        self._arm_look = {}       # welke knop er nu bewapend uitziet
         self._frame_cb = None
         self._timer = None
 
@@ -243,6 +252,8 @@ class HomeControl(Activity):
         self.heading.set_text(service.panel_title)
         self.holder.clean()
         self.tiles = {}
+        self._tile_bg = {}
+        self._arm_look = {}
         items = service.buttons
         if not items:
             hint = lv.label(self.holder)
@@ -272,6 +283,17 @@ class HomeControl(Activity):
         btn.add_event_cb(lambda event, b=button: self._on_press(b),
                          lv.EVENT.CLICKED, None)
         self._focusable(btn)
+        # De kleur die het thema aan een knop geeft, om na een bevestiging weer
+        # naar terug te kunnen. Zelf een kleur kiezen zou het hele paneel
+        # veranderen voor iets dat maar één knop en maar zes seconden aangaat.
+        try:
+            self._tile_bg[button.get("id")] = btn.get_style_bg_color(0)
+        except Exception:
+            pass
+        if self._tile_bg.get(button.get("id")) is None:
+            eigen = lv.color_hex(COL_TILE)
+            btn.set_style_bg_color(eigen, 0)
+            self._tile_bg[button.get("id")] = eigen
 
         label = lv.label(btn)
         text = button.get("label") or ""
@@ -313,8 +335,13 @@ class HomeControl(Activity):
         cachen zou een wachtende knop laten staan tot er toevallig iets anders
         verandert.
         """
+        # De resterende seconden zitten in de cachesleutel, anders staat het
+        # aftellen stil.
+        rest = None
+        if self._armed is not None:
+            rest = max(1, int(self._armed[1] - time.time() + 0.999))
         shown = (service.state_seq, len(service.pending), len(service.results),
-                 self._armed[0] if self._armed else None,
+                 self._armed[0] if self._armed else None, rest,
                  service.connected, service.last_error)
         if shown == self._shown:
             return
@@ -326,9 +353,12 @@ class HomeControl(Activity):
                 continue
             btn, note = tile
             kind, text = service.status_of(button)
-            if self._armed is not None and self._armed[0] == button.get("id"):
-                note.set_text("nog eens")
-                note.set_style_text_color(lv.color_hex(COL_BUSY), 0)
+            ident = button.get("id")
+            armed = self._armed is not None and self._armed[0] == ident
+            self._toon_bewapend(ident, btn, note, armed)
+            if armed:
+                note.set_text("NOG EENS  %d" % rest)
+                note.set_style_text_color(lv.color_hex(COL_TEXT), 0)
                 continue
             if kind == "wacht":
                 note.set_text("...")
@@ -350,7 +380,13 @@ class HomeControl(Activity):
             note.set_style_text_color(
                 lv.color_hex(_hex(entry.get("color"), COL_DIM)), 0)
 
-        if service.connected:
+        if self._armed is not None:
+            # De statusregel is leeg zolang de verbinding staat, dus hier is
+            # plaats voor de enige zin die op dit moment telt.
+            # Kort: de statusregel deelt de kopregel met de titel, en een zin
+            # die daar niet op past loopt van het scherm.
+            self._say("Tik nog eens", COL_ARM)
+        elif service.connected:
             self._say("", COL_DIM)
         else:
             self._say(service.last_error or "geen verbinding", COL_WARN)
@@ -364,6 +400,32 @@ class HomeControl(Activity):
             pass
         self._drop_flags(obj, ("SCROLLABLE", "SCROLL_ELASTIC", "SCROLL_MOMENTUM",
                                "SCROLL_CHAIN_HOR", "SCROLL_CHAIN_VER"))
+
+    def _toon_bewapend(self, ident, btn, note, armed):
+        """Een bewapende knop moet je van een halve meter zien.
+
+        Het was een regeltje van veertien punt onderaan een knop die verder
+        niet veranderde. Maarten drukte op het alarm, zag niets gebeuren en
+        concludeerde dat de knop stuk was - terwijl de badge netjes op de
+        tweede tik stond te wachten. Nu wordt de hele knop rood en staat er
+        NOG EENS met de seconden erbij, in achttien punt.
+
+        Alleen schrijven als er iets verandert: dit loopt langs elke knop bij
+        elke hertekening.
+        """
+        if armed == self._arm_look.get(ident):
+            return
+        self._arm_look[ident] = armed
+        if armed:
+            btn.set_style_bg_color(lv.color_hex(COL_ARM), 0)
+        else:
+            terug = self._tile_bg.get(ident)
+            if terug is not None:
+                btn.set_style_bg_color(terug, 0)
+        font = (_font("font_montserrat_18", "font_montserrat_16") if armed
+                else _font("font_montserrat_14"))
+        if font is not None:
+            note.set_style_text_font(font, 0)
 
     def _inert(self, obj):
         """Een opschrift mag de tik niet opeten die voor de knop bedoeld is."""

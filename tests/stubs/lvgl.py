@@ -18,6 +18,10 @@ class Obj:
         self.size = None
         self.pos = None
         self.flags = set()
+        # Waar het object zich in zijn ouder uitlijnt, als het geen vaste
+        # positie kreeg. Bijgehouden en niet weggeslikt, want anders staat een
+        # scherm dat met align() gebouwd is in elke natekening op elkaar.
+        self.alignment = None
         if parent is not None:
             parent.children.append(self)
 
@@ -49,6 +53,9 @@ class Obj:
 
     def has_flag(self, flag):
         return flag in self.flags
+
+    def align(self, alignment, x_ofs=0, y_ofs=0):
+        self.alignment = (alignment, x_ofs, y_ofs)
 
     def set_text(self, t):
         self.text = t
@@ -250,7 +257,9 @@ label.LONG_MODE = _LongMode
 TEXT_ALIGN = _Enum(CENTER=2, LEFT=0, RIGHT=1)
 SYMBOL = _Enum(SETTINGS="", BELL="", OK="✓")
 SIZE_CONTENT = 0x7FFF
-ALIGN = _Enum(TOP_MID=0, BOTTOM_MID=1, CENTER=2, TOP_LEFT=3, TOP_RIGHT=4)
+ALIGN = _Enum(TOP_MID=0, BOTTOM_MID=1, CENTER=2, TOP_LEFT=3,
+              TOP_RIGHT=4, BOTTOM_LEFT=5, BOTTOM_RIGHT=6,
+              LEFT_MID=7, RIGHT_MID=8)
 font_montserrat_28 = object()
 font_montserrat_24 = object()
 font_montserrat_20 = object()

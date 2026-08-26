@@ -81,7 +81,7 @@ DEFAULT_TITLE = "Huis"
 
 # Een druk op "alarm aan" wil je niet per ongeluk doen. Twee tikken binnen deze
 # tijd, anders vergeet de knop dat hij aangetikt was.
-CONFIRM_SECONDS = 4
+CONFIRM_SECONDS = 6
 
 # Zolang wacht een knop op bewijs dat er iets gebeurd is. Daarna staat er dat
 # het niet bevestigd is. Vier seconden is te kort voor een dakkoepel die vier
